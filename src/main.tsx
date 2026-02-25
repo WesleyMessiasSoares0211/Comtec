@@ -1,13 +1,8 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
+import { AuthProvider } from './hooks/useAuth'; // Debe apuntar al nuevo .tsx
 import App from './App';
-import './index.css';
-import { AuthProvider } from './hooks/useAuth'; // Esto ahora funcionará gracias al cambio a .tsx
 
-ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
-  <React.StrictMode>
-    <AuthProvider>
-      <App />
-    </AuthProvider>
-  </React.StrictMode>
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <AuthProvider>
+    <App />
+  </AuthProvider>
 );
