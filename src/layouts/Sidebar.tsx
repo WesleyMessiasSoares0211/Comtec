@@ -20,12 +20,11 @@ export default function Sidebar() {
   };
 
   const navItems = [
-    // CAMBIO: Agregar el ítem de Dashboard al principio
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
-    { icon: FileText, label: 'Cotizaciones', path: '/quotes' },
-    { icon: Package, label: 'Catálogo', path: '/products' },
-    { icon: Users, label: 'Clientes', path: '/clients' },
-  ];
+  { icon: LayoutDashboard, label: 'Dashboard', path: '/app' },
+  { icon: FileText, label: 'Cotizaciones', path: '/app/quotes' },
+  { icon: Package, label: 'Catálogo', path: '/app/products' },
+  { icon: Users, label: 'Clientes', path: '/app/clients' },
+];
 
   return (
     <aside className="w-64 bg-slate-950 border-r border-slate-800 flex flex-col h-screen fixed left-0 top-0 z-10 transition-all">
