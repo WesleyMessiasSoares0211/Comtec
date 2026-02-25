@@ -5,7 +5,6 @@ import { Toaster } from 'sonner';
 import { useAuth } from './hooks/useAuth';
 
 // --- LAYOUTS ---
-// Asegúrate de que estos archivos existen en estas rutas exactas:
 import Sidebar from './components/layout/Sidebar'; 
 import Header from './components/Header'; 
 import Footer from './components/Footer'; 
@@ -14,7 +13,6 @@ import Footer from './components/Footer';
 const HomePage = lazy(() => import('./pages/HomePage'));
 const CatalogPage = lazy(() => import('./pages/CatalogPage'));
 const ProductDetailPage = lazy(() => import('./pages/ProductDetailPage'));
-// CORRECCIÓN 1: Renombramos la variable para que coincida con lo que usas abajo
 const LoginPage = lazy(() => import('./pages/Login')); 
 const QuoteDocsViewer = lazy(() => import('./pages/QuoteDocsViewer'));
 
@@ -26,7 +24,6 @@ const Clients = lazy(() => import('./pages/Clients'));
 
 // --- COMPONENTES AUXILIARES ---
 
-// 1. Pantalla de Carga Global
 const FallbackLoader = () => (
   <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-4">
     <Loader2 className="w-10 h-10 text-cyan-500 animate-spin" />
@@ -34,7 +31,7 @@ const FallbackLoader = () => (
   </div>
 );
 
-// 2. Layout para la Web Pública
+// Layout Público
 const PublicLayout = () => {
   const { session } = useAuth();
   return (
@@ -42,10 +39,7 @@ const PublicLayout = () => {
       <Header session={session} />
       <main className="flex-1 w-full">
         <Suspense fallback={<FallbackLoader />}>
-          <div className="w-full">
-             {/* CORRECCIÓN 2: Usamos Outlet directamente */}
-             <Outlet /> 
-          </div>
+          <Outlet /> 
         </Suspense>
       </main>
       <Footer />
@@ -53,14 +47,13 @@ const PublicLayout = () => {
   );
 };
 
-// 3. Layout para la App Privada
+// Layout Privado
 const PrivateLayout = () => {
   const { session, loading } = useAuth();
   const location = useLocation();
 
   if (loading) return <FallbackLoader />;
 
-  // Protección de ruta: Si no hay sesión, mandar al Login
   if (!session) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
@@ -83,19 +76,17 @@ export default function App() {
   return (
     <>
       <Toaster position="top-right" theme="dark" richColors closeButton />
-      
       <Routes>
-        {/* === ZONA PÚBLICA === */}
+        {/* ZONA PÚBLICA */}
         <Route element={<PublicLayout />}>
           <Route path="/" element={<HomePage />} />
           <Route path="/catalog" element={<CatalogPage />} />
           <Route path="/product/:id" element={<ProductDetailPage />} />
           <Route path="/quote/docs" element={<QuoteDocsViewer />} />
-          {/* CORRECCIÓN 3: Aquí estaba el error, ahora coincide el nombre */}
           <Route path="/login" element={<LoginPage />} />
         </Route>
 
-        {/* === ZONA PRIVADA === */}
+        {/* ZONA PRIVADA */}
         <Route path="/app" element={<PrivateLayout />}>
           <Route index element={<Dashboard />} />
           <Route path="quotes" element={<Quotes />} />
@@ -103,7 +94,7 @@ export default function App() {
           <Route path="clients" element={<Clients />} />
         </Route>
 
-        {/* === REDIRECCIONES === */}
+        {/* REDIRECCIONES */}
         <Route path="/admin" element={<Navigate to="/app" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
