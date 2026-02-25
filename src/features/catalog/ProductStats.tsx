@@ -11,6 +11,8 @@ interface Props {
 export default function ProductStats({ totalSku, totalValue, criticalStock }: Props) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      
+      {/* Tarjeta 1: Total SKU */}
       <Card gradient="blue">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-blue-500/20 rounded-xl">
@@ -23,6 +25,7 @@ export default function ProductStats({ totalSku, totalValue, criticalStock }: Pr
         </div>
       </Card>
 
+      {/* Tarjeta 2: Valorizado */}
       <Card gradient="emerald">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-emerald-500/20 rounded-xl">
@@ -37,6 +40,7 @@ export default function ProductStats({ totalSku, totalValue, criticalStock }: Pr
         </div>
       </Card>
 
+      {/* Tarjeta 3: Stock Crítico */}
       <Card gradient={criticalStock > 0 ? "orange" : "slate"}>
         <div className="flex items-center gap-4">
           <div className={`p-3 rounded-xl ${criticalStock > 0 ? 'bg-orange-500/20' : 'bg-slate-700/50'}`}>
@@ -50,6 +54,7 @@ export default function ProductStats({ totalSku, totalValue, criticalStock }: Pr
           </div>
         </div>
       </Card>
+      
     </div>
   );
 }
