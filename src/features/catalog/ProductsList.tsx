@@ -5,7 +5,7 @@ import { useProductCatalog } from '../../hooks/useProductCatalog';
 import ProductStats from './ProductStats';
 import ProductFilters from './ProductFilters';
 import ProductTable from './ProductTable';
-// CAMBIO: Importamos el Modal de Contraseña
+// IMPORTANTE: Usamos el modal de contraseña
 import { PasswordDeleteModal } from '../../components/ui/SecurityModals'; 
 
 interface Props {
@@ -24,13 +24,12 @@ export default function ProductsList({ onEditProduct }: Props) {
 
   // ESTADOS PARA EL MODAL DE SEGURIDAD
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  // CAMBIO: Guardamos el producto entero para mostrar su nombre en el modal
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   // 1. Cuando hacen click en el basurero de la tabla
   const onRequestDelete = (id: string) => {
-    // Buscamos el producto en la lista actual para obtener su nombre
+    // Buscamos el objeto producto completo para mostrar su nombre
     const product = products?.find(p => p.id === id);
     if (product) {
       setProductToDelete(product);
@@ -38,20 +37,18 @@ export default function ProductsList({ onEditProduct }: Props) {
     }
   };
 
-  // 2. Cuando la contraseña es correcta y confirman en el modal
+  // 2. Cuando la contraseña es correcta
   const handleConfirmDelete = async () => {
     if (!productToDelete) return;
     
     setIsDeleting(true);
-    // El hook useProductCatalog -> useProducts ya maneja la lógica de BD y Toasts
-    await deleteProduct(productToDelete.id);
+    await deleteProduct(productToDelete.id); // El hook maneja la lógica de DB
     
     setIsDeleting(false);
     setDeleteModalOpen(false);
     setProductToDelete(null);
   };
 
-  // MANEJO DE ESTADOS DE CARGA Y ERROR
   if (loading && (!products || products.length === 0)) {
     return (
       <div className="flex flex-col items-center justify-center py-20 animate-pulse">
@@ -89,7 +86,7 @@ export default function ProductsList({ onEditProduct }: Props) {
       <ProductTable 
         products={products || []}
         onEdit={onEditProduct}
-        onDelete={onRequestDelete} // Pasa el ID hacia arriba
+        onDelete={onRequestDelete} // Pasamos la función que abre el modal
       />
 
       {/* Paginación */}
@@ -102,11 +99,9 @@ export default function ProductsList({ onEditProduct }: Props) {
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
-          
           <span className="text-sm text-slate-500 font-mono">
             Página <span className="text-cyan-400 font-bold">{currentPage}</span> de {totalPages}
           </span>
-
           <button 
             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
             disabled={currentPage === totalPages}
@@ -117,13 +112,13 @@ export default function ProductsList({ onEditProduct }: Props) {
         </div>
       )}
 
-      {/* NUEVO MODAL ESTANDARIZADO */}
+      {/* MODAL DE CONTRASEÑA */}
       <PasswordDeleteModal
         isOpen={deleteModalOpen}
         onClose={() => setDeleteModalOpen(false)}
         onConfirm={handleConfirmDelete}
         loading={isDeleting}
-        itemName={productToDelete?.name} // Mostramos el nombre del producto (ej: "Sensor M12")
+        itemName={productToDelete?.name} // Mostramos nombre del producto (ej: "Sensor M12")
       />
     </div>
   );
