@@ -19,7 +19,7 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
   try {
     const doc = new jsPDF();
     const baseUrl = window.location.origin;
-    const verificationUrl = `${baseUrl}/verify/${quote.folio}`;
+    const verificationUrl = `${baseUrl}/verify/${encodeURIComponent(quote.folio)}`;
     
     // --- COLORES ---
     const colorCyan = [0, 157, 224];
