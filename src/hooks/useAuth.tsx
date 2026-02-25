@@ -25,7 +25,7 @@ interface AuthContextType {
   canEdit: boolean;
   canCreate: boolean;
   signOut: () => Promise<void>;
-  verifyPassword: (password: string) => Promise<boolean>; // Función requerida por modales
+  verifyPassword: (password: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -52,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setTimeout(() => fetchProfile(userId, retries - 1), 1000);
       }
     } catch (err) {
-      console.error('Error profile:', err);
+      console.error('Erro ao carregar perfil:', err);
       setProfile(null);
     }
   };
@@ -91,10 +91,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
   };
 
-  // Validación de seguridad para eliminación de registros
   const verifyPassword = async (password: string): Promise<boolean> => {
     if (!password) return false;
-    // Simulación: en producción usar re-autenticación de Supabase
+    // Simulação de validação (mínimo 3 caracteres para os modais funcionarem)
     return password.length >= 3; 
   };
 
@@ -118,6 +117,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
+  if (context === undefined) throw new Error('useAuth deve ser usado dentro de um AuthProvider');
   return context;
 }
