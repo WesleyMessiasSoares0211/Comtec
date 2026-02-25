@@ -27,7 +27,7 @@ const FallbackLoader = () => (
   </div>
 );
 
-// Layout Público
+// Layout Público (Landing Page y Catálogo)
 const PublicLayout = () => {
   const { session } = useAuth();
   return (
@@ -43,16 +43,13 @@ const PublicLayout = () => {
   );
 };
 
-// Layout Privado (Panel de Control)
+// Layout Privado (Dashboard CRM)
 const PrivateLayout = () => {
   const { session, loading } = useAuth();
   const location = useLocation();
 
   if (loading) return <FallbackLoader />;
-
-  if (!session) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
+  if (!session) return <Navigate to="/login" state={{ from: location }} replace />;
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-200 overflow-hidden">
@@ -68,21 +65,12 @@ const PrivateLayout = () => {
   );
 };
 
-// Componente para manejar la redirección del login
-const LoginRoute = () => {
-  const { session } = useAuth();
-  const navigate = useNavigate();
-  
-  if (session) return <Navigate to="/app" replace />;
-  
-  return <LoginPage onLoginSuccess={() => navigate('/app')} />;
-};
-
 export default function App() {
+  const navigate = useNavigate();
+
   return (
     <>
       <Toaster position="top-right" theme="dark" richColors closeButton />
-      
       <Routes>
         {/* ZONA PÚBLICA */}
         <Route element={<PublicLayout />}>
@@ -90,10 +78,11 @@ export default function App() {
           <Route path="/catalog" element={<CatalogPage />} />
           <Route path="/product/:id" element={<ProductDetailPage />} />
           <Route path="/quote/docs" element={<QuoteDocsViewer />} />
-          <Route path="/login" element={<LoginRoute />} />
+          {/* CORRECCIÓN: Pasamos onLoginSuccess para evitar el crash al loguear */}
+          <Route path="/login" element={<LoginPage onLoginSuccess={() => navigate('/app')} />} />
         </Route>
 
-        {/* ZONA PRIVADA (Panel CRM) */}
+        {/* ZONA PRIVADA (URL /app) */}
         <Route path="/app" element={<PrivateLayout />}>
           <Route index element={<Dashboard />} />
           <Route path="quotes" element={<Quotes />} />
@@ -101,7 +90,6 @@ export default function App() {
           <Route path="clients" element={<Clients />} />
         </Route>
 
-        {/* REDIRECCIONES */}
         <Route path="/admin" element={<Navigate to="/app" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
