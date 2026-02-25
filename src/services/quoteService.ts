@@ -56,4 +56,18 @@ export const quoteService = {
       throw error;
     }
   }
+  async updateStatus(id: string, status: string) {
+  try {
+    const { error } = await supabase
+      .from('crm_quotes')
+      .update({ estado: status })
+      .eq('id', id);
+
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error('Error updating status:', error);
+    return false;
+  }
+},
 };
