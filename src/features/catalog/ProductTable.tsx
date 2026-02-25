@@ -5,16 +5,12 @@ import { Product } from '../../types/product';
 interface Props {
   products: Product[];
   onEdit: (product: Product) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => void; // Esta función abre el modal del padre
 }
 
 export default function ProductTable({ products, onEdit, onDelete }: Props) {
   
-  const handleDeleteClick = (id: string) => {
-    if (window.confirm('¿Estás seguro de que deseas eliminar este producto? Esta acción no se puede deshacer.')) {
-      onDelete(id);
-    }
-  };
+  // ELIMINADO: const handleDeleteClick... (Causante de la doble alerta)
 
   if (products.length === 0) {
     return (
@@ -71,7 +67,7 @@ export default function ProductTable({ products, onEdit, onDelete }: Props) {
                         {product.part_number}
                       </span>
                       <span className="text-xs text-slate-500 flex items-center gap-1">
-                        <Layers className="w-3 h-3" /> {product.category}
+                        <Layers className="w-3 h-3" /> {product.category || product.main_category}
                       </span>
                     </div>
                   </td>
@@ -119,8 +115,10 @@ export default function ProductTable({ products, onEdit, onDelete }: Props) {
                       >
                         <Edit className="w-4 h-4" />
                       </button>
+                      
+                      {/* CORRECCIÓN CRÍTICA: Llamada directa a onDelete sin window.confirm */}
                       <button 
-                        onClick={() => handleDeleteClick(product.id)}
+                        onClick={() => onDelete(product.id)}
                         className="p-2 hover:bg-red-500/10 text-slate-500 hover:text-red-400 rounded-lg transition-colors"
                         title="Eliminar"
                       >
