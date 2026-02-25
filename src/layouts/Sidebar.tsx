@@ -1,12 +1,11 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { 
-  LayoutDashboard, // <--- IMPORTAR ESTE ICONO
+  LayoutDashboard, 
   FileText, 
   Package, 
   Users, 
   LogOut, 
-  Settings 
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -20,11 +19,12 @@ export default function Sidebar() {
   };
 
   const navItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', path: '/app' },
-  { icon: FileText, label: 'Cotizaciones', path: '/app/quotes' },
-  { icon: Package, label: 'Catálogo', path: '/app/products' },
-  { icon: Users, label: 'Clientes', path: '/app/clients' },
-];
+    // Rutas actualizadas para coincidir con tu App.tsx (/app/...)
+    { icon: LayoutDashboard, label: 'Dashboard', path: '/app' }, // Ruta index del dashboard
+    { icon: FileText, label: 'Cotizaciones', path: '/app/quotes' },
+    { icon: Package, label: 'Catálogo', path: '/app/products' },
+    { icon: Users, label: 'Clientes', path: '/app/clients' },
+  ];
 
   return (
     <aside className="w-64 bg-slate-950 border-r border-slate-800 flex flex-col h-screen fixed left-0 top-0 z-10 transition-all">
@@ -39,11 +39,12 @@ export default function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+      <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar">
         {navItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
+            end={item.path === '/app'} // "end" evita que el Dashboard quede siempre activo
             className={({ isActive }) => `
               flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group
               ${isActive 
