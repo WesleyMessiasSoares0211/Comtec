@@ -7,38 +7,78 @@ import { useClients } from '../../hooks/useClients';
 import { useProducts } from '../../hooks/useProducts';
 import { toast } from 'sonner';
 import QuotePreview from './QuotePreview';
+import { Client } from '../../types/client';
 
-export default function QuoteBuilder() {
+interface Props {
+  initialData?: any | null; // Datos para cargar en modo revisión
+  onSuccess?: () => void;   // Para limpiar el estado padre al terminar
+}
+
+export default function QuoteBuilder({ initialData, onSuccess }: Props) {
   const { clients } = useClients();
   const { products } = useProducts();
 
-  // Estados
+  // Estados del Formulario
   const [selectedClientId, setSelectedClientId] = useState('');
   const [items, setItems] = useState<any[]>([]);
   const [validityDays, setValidityDays] = useState(15);
   const [notes, setNotes] = useState('');
-  const [terms, setTerms] = useState(''); // Se llena dinámicamente
+  const [terms, setTerms] = useState('');
   
+  // Estado de UI
   const [showPreview, setShowPreview] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Estado para controlar si es revisión
+  const [isRevisionMode, setIsRevisionMode] = useState(false);
+  const [parentFolio, setParentFolio] = useState('');
+  const [nextVersion, setNextVersion] = useState(1);
+  const [parentQuoteId, setParentQuoteId] = useState<string | undefined>(undefined);
 
   const selectedClient = clients.find(c => c.id === selectedClientId);
 
-  // EFECTO: Cargar condiciones comerciales del cliente al seleccionarlo
+  // EFECTO: Cargar datos si vienen en initialData (Modo Revisión)
   useEffect(() => {
-    if (selectedClient) {
+    if (initialData) {
+      setIsRevisionMode(true);
+      setSelectedClientId(initialData.client_id);
+      setItems(initialData.items || []);
+      setNotes(initialData.notes || '');
+      setTerms(initialData.terms || '');
+      setValidityDays(initialData.validity_days || 15);
+      
+      // Datos críticos para la revisión
+      setParentFolio(initialData.folio);
+      setNextVersion((initialData.version || 1) + 1);
+      setParentQuoteId(initialData.id);
+      
+      toast.info(`Cargando datos para revisión de ${initialData.folio}`);
+    } else {
+      // Resetear si no hay datos (Modo Nuevo)
+      setIsRevisionMode(false);
+      setParentFolio('');
+      setNextVersion(1);
+      setParentQuoteId(undefined);
+      setItems([]);
+      setSelectedClientId('');
+      setNotes('');
+      setTerms('');
+    }
+  }, [initialData]);
+
+  // EFECTO: Cargar términos predeterminados si es nueva cotización
+  useEffect(() => {
+    if (selectedClient && !isRevisionMode && !terms) {
       const condition = selectedClient.condicion_comercial || 'Contado / Transferencia';
       setTerms(
         `Condición de pago: ${condition}.\n` +
         `Plazo de entrega: A confirmar según disponibilidad de stock.\n` +
         `Precios válidos salvo error u omisión.`
       );
-    } else {
-      setTerms('');
     }
-  }, [selectedClientId, clients]);
+  }, [selectedClientId, isRevisionMode, clients]);
 
-  // Cálculos
+  // Cálculos en tiempo real
   const totals = useMemo(() => {
     const subtotal = items.reduce((acc, item) => acc + (item.total || 0), 0);
     const iva = Math.round(subtotal * 0.19);
@@ -60,7 +100,7 @@ export default function QuoteBuilder() {
       unit_price: product.price,
       quantity: 1,
       total: product.price,
-      datasheet_url: product.datasheet_url // CORRECCIÓN: Usamos la columna real
+      datasheet_url: product.datasheet_url
     }]);
     setSearchTerm('');
   };
@@ -77,14 +117,40 @@ export default function QuoteBuilder() {
     setItems(items.filter((_, i) => i !== index));
   };
 
-  const filteredProducts = products.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    p.part_number.toLowerCase().includes(searchTerm.toLowerCase())
-  ).slice(0, 5);
+  const filteredProducts = useMemo(() => {
+    if (!products) return [];
+    
+    return products.filter(p => {
+      const nameSafe = (p.name || '').toLowerCase();
+      const codeSafe = (p.part_number || '').toLowerCase();
+      const searchSafe = searchTerm.toLowerCase();
+
+      return nameSafe.includes(searchSafe) || codeSafe.includes(searchSafe);
+    }).slice(0, 5);
+  }, [products, searchTerm]);
 
   return (
     <div className="flex flex-col h-full space-y-6 animate-in fade-in">
       
+      {/* Indicador de Revisión */}
+      {isRevisionMode && (
+        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 p-4 rounded-xl flex items-center justify-between animate-pulse">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5" />
+            <div>
+              <p className="text-sm font-bold">Modo Edición: Creando Revisión {nextVersion}</p>
+              <p className="text-xs text-amber-500/70">Original: {parentFolio}</p>
+            </div>
+          </div>
+          <button 
+             onClick={onSuccess} 
+             className="text-xs font-bold underline hover:text-amber-300"
+          >
+            Cancelar Edición
+          </button>
+        </div>
+      )}
+
       {/* 1. CONFIGURACIÓN */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-slate-900/50 p-6 rounded-2xl border border-slate-800">
         <div className="md:col-span-2 space-y-2">
@@ -93,6 +159,7 @@ export default function QuoteBuilder() {
             className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:ring-2 focus:ring-cyan-500/50 outline-none transition-all"
             value={selectedClientId}
             onChange={(e) => setSelectedClientId(e.target.value)}
+            disabled={isRevisionMode} // No cambiar cliente en revisión
           >
             <option value="">-- Seleccionar Cliente --</option>
             {clients.map(c => (
@@ -153,6 +220,9 @@ export default function QuoteBuilder() {
                   </div>
                 </div>
               ))}
+              {filteredProducts.length === 0 && (
+                <div className="p-3 text-center text-slate-500 text-sm">No se encontraron productos</div>
+              )}
             </div>
           )}
         </div>
@@ -182,9 +252,9 @@ export default function QuoteBuilder() {
                       <div className="font-bold text-slate-200 text-sm">{item.name}</div>
                       <div className="text-xs text-slate-500 font-mono">{item.part_number}</div>
                       {item.datasheet_url && (
-                         <div className="flex items-center gap-1 mt-1 text-[10px] text-cyan-500">
-                           <FileCheck className="w-3 h-3" /> Ficha Disponible
-                         </div>
+                          <div className="flex items-center gap-1 mt-1 text-[10px] text-cyan-500">
+                            <FileCheck className="w-3 h-3" /> Ficha Disponible
+                          </div>
                       )}
                     </td>
                     <td className="py-3 text-center">
@@ -215,7 +285,14 @@ export default function QuoteBuilder() {
         {/* Totales */}
         <div className="mt-6 pt-4 border-t border-slate-800 flex justify-end">
           <div className="w-64 space-y-2">
-             {/* ... (Mismo bloque de totales que antes) ... */}
+            <div className="flex justify-between text-sm text-slate-400">
+              <span>Subtotal Neto:</span>
+              <span className="font-mono text-slate-200">${totals.subtotal.toLocaleString('es-CL')}</span>
+            </div>
+            <div className="flex justify-between text-sm text-slate-400">
+               <span>IVA (19%):</span>
+               <span className="font-mono text-slate-200">${totals.iva.toLocaleString('es-CL')}</span>
+            </div>
             <div className="flex justify-between text-xl font-black text-cyan-400 pt-2 border-t border-slate-800 mt-2">
               <span>TOTAL:</span>
               <span className="font-mono">${totals.total.toLocaleString('es-CL')}</span>
@@ -269,6 +346,11 @@ export default function QuoteBuilder() {
           notes={notes}
           terms={terms}
           validityDays={validityDays}
+          // Props para la revisión (si aplica)
+          existingFolio={isRevisionMode ? parentFolio : undefined} // Ojo: QuotePreview debe aceptar esta prop
+          nextVersion={nextVersion}
+          parentQuoteId={parentQuoteId}
+          onSuccess={onSuccess}
         />
       )}
     </div>
