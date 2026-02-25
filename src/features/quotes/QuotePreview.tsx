@@ -1,240 +1,167 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import { FileDown, X, FileText, Loader2, ShieldCheck } from 'lucide-react';
+import { FileDown, X, FileText, Loader2, Calendar, FileCheck } from 'lucide-react';
 import { quoteService } from '../../services/quoteService';
 import { toast } from 'sonner';
-import { Client } from '../../services/clientService';
+import { Client } from '../../types/client';
 import { QuoteItem } from '../../types/quotes';
+import { generateQuotePDF } from '../../utils/pdfGenerator';
 
 interface Props {
   client: Client;
   items: QuoteItem[];
   totals: { subtotal: number; iva: number; total: number };
   onClose: () => void;
+  // Nuevos Props V2
+  notes?: string;
+  terms?: string;
+  validityDays?: number;
 }
 
-export default function QuotePreview({ client, items, totals, onClose }: Props) {
+export default function QuotePreview({ client, items, totals, onClose, notes, terms, validityDays }: Props) {
   const [isSaving, setIsSaving] = useState(false);
-  
-  // Referencia oculta para generar el QR como imagen para el PDF
   const qrRef = useRef<SVGSVGElement>(null);
 
-  // Folio generado (Mejor usar timestamp para evitar colisiones simples en frontend)
-  const folio = useMemo(() => `OCT-${Date.now().toString().slice(-6)}`, []);
-  
-  // URL Correcta que coincide con App.tsx
-  const baseUrl = window.location.origin; // Detecta automáticamente localhost o prod
-  const verificationUrl = `${baseUrl}/verify/${folio}`;
+  // Folio temporal visual (El real lo genera la BBDD al guardar)
+  const tempDate = new Date().toLocaleDateString('es-CL');
+  const baseUrl = window.location.origin;
+  // URL genérica, se actualizará con el folio real en el PDF
+  const verificationUrl = `${baseUrl}/verify/preview`; 
 
-  const generatePDF = async () => {
+  const handleEmit = async () => {
     if (isSaving) return;
+    setIsSaving(true);
     
     try {
-      setIsSaving(true);
+      // 1. Generar Imagen QR
+      let qrDataUrl = '';
+      try {
+        if (qrRef.current) {
+          const svgData = new XMLSerializer().serializeToString(qrRef.current);
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
+          const img = new Image();
+          const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+          const url = URL.createObjectURL(svgBlob);
+          
+          await new Promise((resolve, reject) => {
+            img.onload = () => {
+              canvas.width = img.width;
+              canvas.height = img.height;
+              ctx?.drawImage(img, 0, 0);
+              qrDataUrl = canvas.toDataURL("image/png");
+              URL.revokeObjectURL(url);
+              resolve(true);
+            };
+            img.onerror = (e) => reject(e);
+            img.src = url;
+          });
+        }
+      } catch (qrError) {
+        console.warn("QR Error", qrError);
+      }
 
-      // 1. Guardar en Base de Datos
-      await quoteService.create({
-        folio: folio,
+      // 2. Guardar en Base de Datos (Aquí se genera el Folio Real)
+      const savedQuote = await quoteService.create({
         client_id: client.id,
-        items: items.map(item => ({
-          ...item,
-          technical_spec_url: item.technical_spec_url || null 
-        })),
+        items: items,
         subtotal_neto: totals.subtotal,
         iva: totals.iva,
-        total_bruto: totals.total
+        total_bruto: totals.total,
+        notes,
+        terms,
+        validity_days: validityDays
       });
 
-      // 2. Preparar Imagen QR
-      let qrDataUrl = '';
-      if (qrRef.current) {
-        const svgData = new XMLSerializer().serializeToString(qrRef.current);
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-        const img = new Image();
-        const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
-        const url = URL.createObjectURL(svgBlob);
-        
-        await new Promise((resolve) => {
-          img.onload = () => {
-            canvas.width = img.width;
-            canvas.height = img.height;
-            ctx?.drawImage(img, 0, 0);
-            qrDataUrl = canvas.toDataURL("image/png");
-            URL.revokeObjectURL(url);
-            resolve(true);
-          };
-          img.src = url;
-        });
+      // 3. Generar PDF con el Folio Real que nos devolvió la BBDD
+      const pdfSuccess = generateQuotePDF({
+        folio: savedQuote.folio, // ¡Folio Real! (ej: COT-001/2026)
+        items,
+        subtotal_neto: totals.subtotal,
+        iva: totals.iva,
+        total_bruto: totals.total,
+        created_at: savedQuote.created_at,
+        notes,
+        terms,
+        validity_days: validityDays
+      }, client, qrDataUrl);
+
+      if (pdfSuccess) {
+        toast.success(`Cotización ${savedQuote.folio} emitida y descargada`);
+      } else {
+        toast.warning(`Cotización ${savedQuote.folio} guardada, pero falló el PDF`);
       }
-
-      // 3. Generar PDF
-      const doc = new jsPDF();
       
-      // -- Header --
-      doc.setFontSize(22);
-      doc.setTextColor(0, 157, 224); // Cyan corporativo
-      doc.text('COMTEC INDUSTRIAL', 14, 22);
-      
-      doc.setFontSize(10);
-      doc.setTextColor(100);
-      doc.text('Soluciones Industriales de Alta Calidad', 14, 28);
-      
-      // Datos Folio
-      doc.setTextColor(0);
-      doc.text(`Folio: ${folio}`, 150, 22);
-      doc.text(`Fecha: ${new Date().toLocaleDateString('es-CL')}`, 150, 28);
-
-      doc.setDrawColor(200);
-      doc.line(14, 35, 196, 35);
-
-      // -- Cliente --
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      doc.text('CLIENTE:', 14, 45);
-      doc.setFont('helvetica', 'normal');
-      doc.text(client.razon_social, 14, 52);
-      doc.text(`RUT: ${client.rut}`, 14, 58);
-      doc.text(`${client.direccion || ''}, ${client.comuna || ''}`, 14, 64);
-
-      // -- Insertar QR en el PDF si se generó --
-      if (qrDataUrl) {
-        doc.addImage(qrDataUrl, 'PNG', 160, 40, 30, 30);
-        doc.setFontSize(8);
-        doc.text("Verificar Oferta", 160, 75);
-      }
-
-      // -- Tabla --
-      autoTable(doc, {
-        startY: 85,
-        head: [['P/N', 'Descripción Técnica', 'Cant.', 'P. Unitario', 'Total']],
-        body: items.map(i => [
-          i.part_number, 
-          i.name, 
-          i.quantity, 
-          `$${i.unit_price.toLocaleString('es-CL')}`, 
-          `$${i.total.toLocaleString('es-CL')}`
-        ]),
-        headStyles: { fillColor: [15, 23, 42] }, // Slate-950
-        styles: { fontSize: 9, cellPadding: 3 },
-        columnStyles: {
-          0: { cellWidth: 30 },
-          2: { halign: 'center' },
-          3: { halign: 'right' },
-          4: { halign: 'right' }
-        }
-      });
-
-      // -- Totales --
-      const finalY = (doc as any).lastAutoTable.finalY + 10;
-      doc.setFontSize(10);
-      doc.text(`Subtotal Neto:`, 130, finalY);
-      doc.text(`$${totals.subtotal.toLocaleString('es-CL')}`, 196, finalY, { align: 'right' });
-      
-      doc.text(`IVA (19%):`, 130, finalY + 7);
-      doc.text(`$${totals.iva.toLocaleString('es-CL')}`, 196, finalY + 7, { align: 'right' });
-      
-      doc.setFontSize(12);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(0, 157, 224);
-      doc.text(`TOTAL BRUTO:`, 130, finalY + 15);
-      doc.text(`$${totals.total.toLocaleString('es-CL')}`, 196, finalY + 15, { align: 'right' });
-
-      doc.setFontSize(8);
-      doc.setTextColor(150);
-      doc.text(`Validación online: ${verificationUrl}`, 14, 285);
-
-      doc.save(`Oferta_Comtec_${folio}.pdf`);
-      
-      toast.success(`Oferta ${folio} registrada`, {
-        description: "El PDF se ha descargado y el registro se guardó en la base de datos."
-      });
       onClose();
 
     } catch (error: any) {
-      console.error("Error PDF:", error);
-      toast.error("Error al generar documento", {
-        description: "Hubo un problema al guardar o generar el PDF."
-      });
+      console.error("Proceso fallido:", error);
+      toast.error("Error al emitir", { description: error.message });
     } finally {
       setIsSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[100] flex items-center justify-center p-4 overflow-y-auto" onClick={onClose}>
+    <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[100] flex items-center justify-center p-4" onClick={onClose}>
       
-      {/* Elemento QR Oculto para renderizado Canvas/PDF */}
+      {/* QR Oculto para generación */}
       <div style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}>
-        <QRCodeSVG 
-          ref={qrRef}
-          value={verificationUrl} 
-          size={200} 
-          level="M" 
-          includeMargin={true}
-        />
+        <QRCodeSVG ref={qrRef} value={verificationUrl} size={200} level="M" includeMargin={true} />
       </div>
 
-      <div className="bg-white w-full max-w-4xl my-auto rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white w-full max-w-4xl h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
         
-        {/* Header Modal */}
-        <div className="bg-slate-900 p-4 flex justify-between items-center border-b border-slate-800">
+        {/* Header Control */}
+        <div className="bg-slate-900 p-4 flex justify-between items-center border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2">
             <div className="bg-cyan-500/10 p-1.5 rounded-lg">
               <FileText className="w-5 h-5 text-cyan-400" />
             </div>
             <div>
-              <h3 className="text-white font-bold text-sm">Vista Previa de Oferta</h3>
-              <p className="text-slate-500 text-[10px] uppercase font-bold tracking-wider">{folio}</p>
+              <h3 className="text-white font-bold text-sm">Vista Previa</h3>
+              <p className="text-slate-500 text-[10px]">Revisa antes de emitir oficial</p>
             </div>
           </div>
           <div className="flex gap-2">
             <button 
-              onClick={generatePDF}
+              onClick={handleEmit}
               disabled={isSaving}
               className="bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-lg shadow-cyan-900/20 active:scale-95 disabled:opacity-50"
             >
               {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
-              EMITIR Y DESCARGAR
+              {isSaving ? 'EMITIENDO...' : 'EMITIR OFICIAL'}
             </button>
-            <button onClick={onClose} className="bg-slate-800 hover:bg-slate-700 text-slate-400 p-2 rounded-xl transition-colors">
+            <button onClick={onClose} disabled={isSaving} className="bg-slate-800 hover:bg-slate-700 text-slate-400 p-2 rounded-xl transition-colors">
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* --- Visualización (Sin cambios mayores, solo el QR visible) --- */}
-        <div className="p-12 text-slate-800 bg-white overflow-y-auto max-h-[75vh]">
-          {/* Header Documento */}
+        {/* DOCUMENTO VISUAL (HTML) */}
+        <div className="flex-1 overflow-y-auto p-8 md:p-12 bg-white text-slate-800 custom-scrollbar">
+          
+          {/* Encabezado Doc */}
           <div className="flex justify-between border-b-2 border-slate-100 pb-8 mb-8">
             <div>
-              <h1 className="text-3xl font-black text-blue-600 tracking-tighter">COMTEC</h1>
+              <h1 className="text-3xl font-black text-cyan-600 tracking-tighter">COMTEC</h1>
               <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase">Industrial Solutions</p>
             </div>
             <div className="text-right">
               <div className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-[10px] font-bold mb-2 inline-block uppercase">Borrador</div>
-              <p className="text-sm text-slate-500 font-medium">{new Date().toLocaleDateString('es-CL')}</p>
+              <p className="text-sm text-slate-500 font-medium">Fecha: {tempDate}</p>
+              {validityDays && <p className="text-xs text-slate-400">Validez: {validityDays} días</p>}
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-8 mb-12">
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-widest">Atención a:</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-widest">Cliente:</p>
               <p className="font-bold text-xl text-slate-900 leading-tight">{client.razon_social}</p>
-              <div className="mt-4 space-y-1 text-sm text-slate-600">
+              <div className="mt-2 text-sm text-slate-600">
                 <p>RUT: {client.rut}</p>
                 <p>{client.direccion}</p>
               </div>
-            </div>
-            
-            <div className="flex flex-col items-end">
-              {/* QR Visible para el usuario */}
-              <div className="p-3 border-2 border-slate-100 rounded-2xl bg-white shadow-sm inline-block">
-                <QRCodeSVG value={verificationUrl} size={90} level="M" />
-              </div>
-              <p className="text-[8px] text-slate-400 mt-1 text-right italic">Escanee para verificar</p>
             </div>
           </div>
 
@@ -250,8 +177,15 @@ export default function QuotePreview({ client, items, totals, onClose }: Props) 
             <tbody className="divide-y divide-slate-100">
               {items.map((item, idx) => (
                 <tr key={idx}>
-                  <td className="py-4 text-sm font-mono text-blue-600 font-bold">{item.part_number}</td>
-                  <td className="py-4 text-sm font-semibold text-slate-700">{item.name}</td>
+                  <td className="py-4 text-sm font-mono text-cyan-700 font-bold">{item.part_number}</td>
+                  <td className="py-4 text-sm font-semibold text-slate-700">
+                    {item.name}
+                    {item.datasheet_url && (
+                      <div className="flex items-center gap-1 mt-1 text-[10px] text-cyan-600 font-normal">
+                        <FileCheck className="w-3 h-3" /> Ficha Técnica Incluida
+                      </div>
+                    )}
+                  </td>
                   <td className="py-4 text-sm text-center font-medium">{item.quantity}</td>
                   <td className="py-4 text-sm font-bold text-right text-slate-900">${item.total.toLocaleString('es-CL')}</td>
                 </tr>
@@ -259,8 +193,7 @@ export default function QuotePreview({ client, items, totals, onClose }: Props) 
             </tbody>
           </table>
 
-          {/* Footer Totales */}
-          <div className="flex justify-end border-t-2 border-slate-100 pt-8">
+          <div className="flex justify-end border-t-2 border-slate-100 pt-8 mb-12">
             <div className="w-72 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500 font-medium">Subtotal:</span>
@@ -270,12 +203,29 @@ export default function QuotePreview({ client, items, totals, onClose }: Props) 
                 <span className="text-slate-500 font-medium">IVA (19%):</span>
                 <span className="font-bold text-slate-700">${totals.iva.toLocaleString('es-CL')}</span>
               </div>
-              <div className="flex justify-between text-2xl font-black text-blue-700 pt-4 border-t border-blue-100">
+              <div className="flex justify-between text-2xl font-black text-cyan-700 pt-4 border-t border-cyan-100">
                 <span>TOTAL:</span>
                 <span>${totals.total.toLocaleString('es-CL')}</span>
               </div>
             </div>
           </div>
+
+          {/* Notas y Condiciones */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-xs border-t border-slate-100 pt-8">
+            {notes && (
+              <div>
+                <h4 className="font-bold text-slate-700 uppercase mb-2">Observaciones</h4>
+                <p className="text-slate-500 whitespace-pre-line leading-relaxed">{notes}</p>
+              </div>
+            )}
+            {terms && (
+              <div>
+                <h4 className="font-bold text-slate-700 uppercase mb-2">Términos y Condiciones</h4>
+                <p className="text-slate-500 whitespace-pre-line leading-relaxed">{terms}</p>
+              </div>
+            )}
+          </div>
+
         </div>
       </div>
     </div>
