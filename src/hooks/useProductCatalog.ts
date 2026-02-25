@@ -77,6 +77,11 @@ export function useProductCatalog() {
   }, [filteredProducts, currentPage]);
 
   const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE);
+  useEffect(() => {
+    if (currentPage > 1 && currentPage > totalPages) {
+      setCurrentPage(prev => Math.max(1, prev - 1));
+    }
+  }, [totalPages, currentPage]);
 
   useEffect(() => { setCurrentPage(1); }, [searchTerm, categoryFilter, showLowStockOnly]);
 
