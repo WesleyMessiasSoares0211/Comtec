@@ -19,8 +19,8 @@ export default function Sidebar() {
   };
 
   const navItems = [
-    // Rutas actualizadas para coincidir con tu App.tsx (/app/...)
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/app' }, // Ruta index del dashboard
+    // CORRECCIÓN: Rutas actualizadas con el prefijo '/app'
+    { icon: LayoutDashboard, label: 'Dashboard', path: '/app' },
     { icon: FileText, label: 'Cotizaciones', path: '/app/quotes' },
     { icon: Package, label: 'Catálogo', path: '/app/products' },
     { icon: Users, label: 'Clientes', path: '/app/clients' },
@@ -44,7 +44,7 @@ export default function Sidebar() {
           <NavLink
             key={item.path}
             to={item.path}
-            end={item.path === '/app'} // "end" evita que el Dashboard quede siempre activo
+            end={item.path === '/app'} // Evita que Dashboard quede siempre activo
             className={({ isActive }) => `
               flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group
               ${isActive 
@@ -59,7 +59,7 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Footer / User Profile */}
+      {/* Footer */}
       <div className="p-4 border-t border-slate-800 bg-slate-900/50">
         <button 
           onClick={handleSignOut}
