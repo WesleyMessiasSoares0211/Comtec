@@ -9,28 +9,24 @@ import Sidebar from './components/layout/Sidebar';
 import Header from './components/Header';
 import Footer from './components/Footer';
 
-// --- PÁGINAS PÚBLICAS (Lazy Loading) ---
+// --- PÁGINAS (Lazy Loading) ---
 const HomePage = lazy(() => import('./pages/HomePage'));
 const CatalogPage = lazy(() => import('./pages/CatalogPage'));
 const ProductDetailPage = lazy(() => import('./pages/ProductDetailPage'));
-const LoginPage = lazy(() => import('./pages/Login')); // Renombrado para claridad
+const LoginPage = lazy(() => import('./pages/Login'));
 const QuoteDocsViewer = lazy(() => import('./pages/QuoteDocsViewer'));
-
-// --- PÁGINAS PRIVADAS (App Interna) ---
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Quotes = lazy(() => import('./pages/Quotes'));
 const Products = lazy(() => import('./pages/Products'));
 const Clients = lazy(() => import('./pages/Clients'));
 
-// --- COMPONENTES AUXILIARES ---
 const FallbackLoader = () => (
   <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-4">
     <Loader2 className="w-10 h-10 text-cyan-500 animate-spin" />
-    <span className="text-slate-500 text-sm font-bold uppercase tracking-widest">Cargando Sistema...</span>
+    <span className="text-slate-500 text-sm font-bold uppercase tracking-widest">A carregar...</span>
   </div>
 );
 
-// Layout Público
 const PublicLayout = () => {
   const { session } = useAuth();
   return (
@@ -46,21 +42,17 @@ const PublicLayout = () => {
   );
 };
 
-// Layout Privado
 const PrivateLayout = () => {
   const { session, loading } = useAuth();
   const location = useLocation();
 
   if (loading) return <FallbackLoader />;
-
-  if (!session) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
+  if (!session) return <Navigate to="/login" state={{ from: location }} replace />;
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-200 overflow-hidden">
       <Sidebar />
-      <main className="flex-1 ml-64 overflow-y-auto p-8 custom-scrollbar">
+      <main className="flex-1 ml-64 overflow-y-auto p-8">
         <Suspense fallback={<FallbackLoader />}>
           <div className="max-w-7xl mx-auto">
              <Outlet />
@@ -75,9 +67,7 @@ export default function App() {
   return (
     <>
       <Toaster position="top-right" theme="dark" richColors closeButton />
-      
       <Routes>
-        {/* ZONA PÚBLICA */}
         <Route element={<PublicLayout />}>
           <Route path="/" element={<HomePage />} />
           <Route path="/catalog" element={<CatalogPage />} />
@@ -86,7 +76,6 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
         </Route>
 
-        {/* ZONA PRIVADA */}
         <Route path="/app" element={<PrivateLayout />}>
           <Route index element={<Dashboard />} />
           <Route path="quotes" element={<Quotes />} />
@@ -94,7 +83,6 @@ export default function App() {
           <Route path="clients" element={<Clients />} />
         </Route>
 
-        {/* REDIRECCIONES */}
         <Route path="/admin" element={<Navigate to="/app" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
