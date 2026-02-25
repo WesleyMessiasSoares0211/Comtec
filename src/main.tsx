@@ -1,20 +1,22 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import './index.css'; 
 import { AuthProvider } from './hooks/useAuth'; 
 
-// Certifique-se de que o id 'root' existe no seu index.html
 const rootElement = document.getElementById('root');
 
 if (!rootElement) {
-  throw new Error("Não foi possível encontrar o elemento root. Verifique o seu index.html");
+  throw new Error("No se encontró el elemento root en el DOM.");
 }
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
-    <AuthProvider>
-      <App />
-    </AuthProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    </BrowserRouter>
   </React.StrictMode>
 );
