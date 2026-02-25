@@ -11,33 +11,39 @@ export interface QuotePayload {
   terms?: string;
   validity_days?: number;
   version?: number;
+  folio?: string; // Nuevo: Opcional, si viene es una revisión
+  parent_quote_id?: string; // Nuevo: ID de la cotización original
 }
 
 export const quoteService = {
   async create(payload: QuotePayload) {
     try {
-      // 1. Obtener Folio Automático desde BBDD
-      const { data: folio, error: folioError } = await supabase
-        .rpc('get_next_quote_folio');
+      let folioToUse = payload.folio;
 
-      if (folioError) throw folioError;
+      // 1. Si NO traemos folio (es nueva), generamos uno nuevo automático
+      if (!folioToUse) {
+        const { data: newFolio, error: folioError } = await supabase
+          .rpc('get_next_quote_folio');
+        if (folioError) throw folioError;
+        folioToUse = newFolio;
+      }
 
-      // 2. Insertar Cotización
-      // Nota: Los items guardan 'datasheet_url' para persistencia
+      // 2. Insertar Cotización (Sea nueva o revisión)
       const { data, error } = await supabase
         .from('crm_quotes')
         .insert([{
-          folio: folio, 
+          folio: folioToUse, // Usamos el folio determinado
           client_id: payload.client_id,
-          items: payload.items, // Asegurarse que los items llevan datasheet_url
+          items: payload.items,
           subtotal_neto: payload.subtotal_neto,
           iva: payload.iva,
           total_bruto: payload.total_bruto,
-          estado: 'Pendiente',
+          estado: 'Pendiente', // Las revisiones nacen pendientes
           notes: payload.notes,
-          terms: payload.terms, // Aquí viajan los términos personalizados del cliente
+          terms: payload.terms,
           validity_days: payload.validity_days || 15,
-          version: payload.version || 1
+          version: payload.version || 1, // Si es revisión, vendrá > 1
+          parent_quote_id: payload.parent_quote_id // Vinculación histórica
         }])
         .select()
         .single();
