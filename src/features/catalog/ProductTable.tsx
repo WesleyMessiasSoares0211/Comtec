@@ -5,13 +5,11 @@ import { Product } from '../../types/product';
 interface Props {
   products: Product[];
   onEdit: (product: Product) => void;
-  onDelete: (id: string) => void; // Esta función abre el modal del padre
+  onDelete: (id: string) => void; // Solo pasa el ID hacia arriba
 }
 
 export default function ProductTable({ products, onEdit, onDelete }: Props) {
   
-  // ELIMINADO: const handleDeleteClick... (Causante de la doble alerta)
-
   if (products.length === 0) {
     return (
       <div className="text-center py-20 bg-slate-900/30 rounded-2xl border border-slate-800 animate-in fade-in">
@@ -41,7 +39,6 @@ export default function ProductTable({ products, onEdit, onDelete }: Props) {
               
               return (
                 <tr key={product.id} className="hover:bg-slate-800/30 transition-colors group">
-                  {/* COLUMNA 1: PRODUCTO */}
                   <td className="py-4 px-6">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center shrink-0 border border-slate-700">
@@ -59,8 +56,6 @@ export default function ProductTable({ products, onEdit, onDelete }: Props) {
                       </div>
                     </div>
                   </td>
-
-                  {/* COLUMNA 2: CÓDIGO Y CATEGORÍA */}
                   <td className="py-4 px-6">
                     <div className="flex flex-col gap-1">
                       <span className="font-mono text-xs text-cyan-300 bg-cyan-950/30 px-2 py-0.5 rounded border border-cyan-500/20 w-fit">
@@ -71,8 +66,6 @@ export default function ProductTable({ products, onEdit, onDelete }: Props) {
                       </span>
                     </div>
                   </td>
-
-                  {/* COLUMNA 3: STOCK */}
                   <td className="py-4 px-6 text-center">
                     <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${
                       isLowStock 
@@ -82,46 +75,23 @@ export default function ProductTable({ products, onEdit, onDelete }: Props) {
                       {isLowStock && <AlertTriangle className="w-3 h-3" />}
                       <span className="font-bold text-sm">{product.stock}</span>
                     </div>
-                    <div className="text-[10px] text-slate-600 mt-1">
-                      Min: {product.min_stock}
-                    </div>
                   </td>
-
-                  {/* COLUMNA 4: PRECIO */}
                   <td className="py-4 px-6 text-right">
                     <div className="font-mono text-slate-300 font-bold">
                       ${product.price.toLocaleString('es-CL')}
                     </div>
                   </td>
-
-                  {/* COLUMNA 5: ACCIONES */}
                   <td className="py-4 px-6 text-right">
                     <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       {product.datasheet_url && (
-                        <a 
-                          href={product.datasheet_url} 
-                          target="_blank" 
-                          rel="noreferrer"
-                          className="p-2 hover:bg-cyan-500/10 text-slate-500 hover:text-cyan-400 rounded-lg transition-colors"
-                          title="Ver Ficha Técnica"
-                        >
+                        <a href={product.datasheet_url} target="_blank" rel="noreferrer" className="p-2 hover:bg-cyan-500/10 text-slate-500 hover:text-cyan-400 rounded-lg transition-colors">
                           <FileText className="w-4 h-4" />
                         </a>
                       )}
-                      <button 
-                        onClick={() => onEdit(product)}
-                        className="p-2 hover:bg-blue-500/10 text-slate-500 hover:text-blue-400 rounded-lg transition-colors"
-                        title="Editar"
-                      >
+                      <button onClick={() => onEdit(product)} className="p-2 hover:bg-blue-500/10 text-slate-500 hover:text-blue-400 rounded-lg transition-colors">
                         <Edit className="w-4 h-4" />
                       </button>
-                      
-                      {/* CORRECCIÓN CRÍTICA: Llamada directa a onDelete sin window.confirm */}
-                      <button 
-                        onClick={() => onDelete(product.id)}
-                        className="p-2 hover:bg-red-500/10 text-slate-500 hover:text-red-400 rounded-lg transition-colors"
-                        title="Eliminar"
-                      >
+                      <button onClick={() => onDelete(product.id)} className="p-2 hover:bg-red-500/10 text-slate-500 hover:text-red-400 rounded-lg transition-colors">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
