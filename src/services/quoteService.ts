@@ -69,4 +69,5 @@ export const quoteService = {
     console.error('Error updating status:', error);
     return false;
   }
+  }
 };
