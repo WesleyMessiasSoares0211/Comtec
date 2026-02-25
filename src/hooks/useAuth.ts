@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
@@ -10,7 +10,7 @@ export interface UserProfile {
   role: UserRole;
 }
 
-interface UseAuthReturn {
+interface AuthContextType {
   session: Session | null;
   profile: UserProfile | null;
   role: UserRole;
@@ -24,9 +24,12 @@ interface UseAuthReturn {
   canDelete: boolean;
   canEdit: boolean;
   canCreate: boolean;
+  signOut: () => Promise<void>; // Agregamos signOut para facilitar
 }
 
-export function useAuth(): UseAuthReturn {
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,73 +43,72 @@ export function useAuth(): UseAuthReturn {
         .eq('id', userId)
         .maybeSingle();
 
-      if (profileError) {
-        throw profileError;
-      }
+      if (profileError) throw profileError;
 
       if (data) {
         setProfile(data as UserProfile);
         setError(null);
       } else {
-        // Si no hay perfil y tenemos reintentos disponibles, esperar y reintentar
         if (retries > 0) {
-          console.log(`Perfil no encontrado, reintentando... (${retries} intentos restantes)`);
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          return fetchProfile(userId, retries - 1);
+          // Reintento silencioso
+          setTimeout(() => fetchProfile(userId, retries - 1), 1000);
+        } else {
+          console.warn('Perfil no encontrado');
+          setProfile(null);
         }
-
-        // Si no hay reintentos disponibles, establecer error
-        console.warn('Perfil no encontrado después de varios intentos');
-        setProfile(null);
-        setError('Perfil no encontrado. Intente cerrar sesión y volver a iniciar.');
       }
-    } catch (err) {
-      console.error('Error fetching profile:', err);
-      setError(err instanceof Error ? err.message : 'Error al cargar perfil');
+    } catch (err: any) {
+      console.error('Error profile:', err);
       setProfile(null);
     }
   };
 
   useEffect(() => {
+    let mounted = true;
+
     const initAuth = async () => {
       try {
-        setLoading(true);
-
         const { data: { session: currentSession } } = await supabase.auth.getSession();
-        setSession(currentSession);
-
-        if (currentSession?.user) {
-          await fetchProfile(currentSession.user.id);
+        if (mounted) {
+          setSession(currentSession);
+          if (currentSession?.user) {
+            await fetchProfile(currentSession.user.id);
+          }
         }
       } catch (err) {
-        console.error('Error initializing auth:', err);
-        setError('Error al inicializar autenticación');
+        console.error(err);
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
     initAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, newSession) => {
-        (async () => {
-          setSession(newSession);
-
-          if (newSession?.user) {
-            await fetchProfile(newSession.user.id);
-          } else {
-            setProfile(null);
-          }
-        })();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      if (mounted) {
+        setSession(newSession);
+        if (newSession?.user) {
+          await fetchProfile(newSession.user.id);
+        } else {
+          setProfile(null);
+          setLoading(false); // Asegurar que loading termine al salir
+        }
       }
-    );
+    });
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
     };
   }, []);
 
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+    setProfile(null);
+  };
+
+  // Lógica de Roles
   const role = profile?.role || null;
   const isAuthenticated = !!session;
   const isSuperAdmin = role === 'super_admin';
@@ -114,11 +116,7 @@ export function useAuth(): UseAuthReturn {
   const isVendedor = role === 'vendedor';
   const isTecnico = role === 'tecnico';
 
-  const canDelete = isSuperAdmin || isAdmin;
-  const canEdit = isSuperAdmin || isAdmin || isVendedor;
-  const canCreate = isSuperAdmin || isAdmin || isVendedor;
-
-  return {
+  const value = {
     session,
     profile,
     role,
@@ -129,8 +127,20 @@ export function useAuth(): UseAuthReturn {
     isAdmin,
     isVendedor,
     isTecnico,
-    canDelete,
-    canEdit,
-    canCreate,
+    canDelete: isSuperAdmin || isAdmin,
+    canEdit: isSuperAdmin || isAdmin || isVendedor,
+    canCreate: isSuperAdmin || isAdmin || isVendedor,
+    signOut
   };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+// Hook para consumir el contexto
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 }
