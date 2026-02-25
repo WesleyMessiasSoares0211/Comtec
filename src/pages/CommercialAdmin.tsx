@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
-
 import AdminLayout from '../layouts/AdminLayout';
 
 // Módulos
-import DashboardView from '../features/dashboard/DashboardView'; // <--- IMPORTACIÓN NUEVA
+import DashboardView from '../features/dashboard/DashboardView';
 import ClientsForm from '../features/clients/ClientsForm';
 import ClientsList from '../features/clients/ClientsList';
 import ProductsForm from '../features/catalog/ProductsForm';
@@ -24,27 +23,26 @@ type TabType = 'dashboard' | 'clientes' | 'productos' | 'ofertas';
 export default function CommercialAdmin() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   
-  // Hook Global de Clientes
   const { stats: clientStats, loading: clientsLoading, refreshClients } = useClients();
 
-  // Control de Vistas (Tabs y Formularios)
+  // Control de Vistas
   const [showQuoteBuilder, setShowQuoteBuilder] = useState(false);
   const [showClientForm, setShowClientForm] = useState(false);
   const [showProductForm, setShowProductForm] = useState(false);
 
-  // Estados de Edición y Selección
+  // Estados de Edición
   const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
-  const [quoteFilterClient, setQuoteFilterClient] = useState<Client | null>(null);
   
-  // Modales de Clientes
+  // ESTADO NUEVO: Cotización para Revisar/Editar
+  const [quoteToRevise, setQuoteToRevise] = useState<any>(null); 
+  
+  const [quoteFilterClient, setQuoteFilterClient] = useState<Client | null>(null);
   const [historyClient, setHistoryClient] = useState<Client | null>(null);
   const [viewingClient, setViewingClient] = useState<Client | null>(null);
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab as TabType);
-    
-    // Resetear estados al cambiar de módulo para evitar conflictos visuales
     if (tab === 'clientes') {
       setShowClientForm(false);
       setClientToEdit(null);
@@ -55,9 +53,13 @@ export default function CommercialAdmin() {
       setShowProductForm(false);
       setProductToEdit(null);
     }
-    if (tab === 'ofertas') setShowQuoteBuilder(false);
+    if (tab === 'ofertas') {
+      setShowQuoteBuilder(false);
+      setQuoteToRevise(null); // Limpiar revisión al cambiar manualmente
+    }
   };
 
+  // --- HANDLERS EXISTENTES ---
   const handleEditClient = (client: Client) => {
     setClientToEdit(client);
     setShowClientForm(true);
@@ -74,15 +76,23 @@ export default function CommercialAdmin() {
     setShowProductForm(true);
   };
 
+  // --- NUEVO HANDLER: REVISIÓN ---
+  const handleCreateRevision = (quote: any) => {
+    setQuoteToRevise(quote);      // 1. Cargar datos en memoria
+    setShowQuoteBuilder(true);    // 2. Activar modo constructor
+    setActiveTab('ofertas');      // 3. Mover a la pestaña correcta
+  };
+
+  const handleQuoteSuccess = () => {
+    setShowQuoteBuilder(false);
+    setQuoteToRevise(null);
+  };
+
   return (
     <AdminLayout activeTab={activeTab} onTabChange={handleTabChange}>
       
-      {/* VISTA: DASHBOARD */}
-      {activeTab === 'dashboard' && (
-        <DashboardView /> 
-      )}
+      {activeTab === 'dashboard' && <DashboardView />}
 
-      {/* VISTA: GESTIÓN DE CLIENTES */}
       {activeTab === 'clientes' && (
         <div className="space-y-6 animate-in fade-in duration-300">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -119,11 +129,12 @@ export default function CommercialAdmin() {
             />
           )}
 
-          {/* Modales Auxiliares */}
           {historyClient && (
             <ClientHistoryModal 
               client={historyClient}
               onClose={() => setHistoryClient(null)}
+              // Pasamos la función para crear revisión desde el historial también
+              onCreateRevision={handleCreateRevision} 
             />
           )}
 
@@ -136,7 +147,6 @@ export default function CommercialAdmin() {
         </div>
       )}
 
-      {/* VISTA: CATÁLOGO DE PRODUCTOS */}
       {activeTab === 'productos' && (
         <div className="space-y-6 animate-in fade-in duration-300">
           <div className="flex justify-between items-end">
@@ -165,7 +175,6 @@ export default function CommercialAdmin() {
         </div>
       )}
 
-      {/* VISTA: OFERTAS COMERCIALES */}
       {activeTab === 'ofertas' && (
         <div className="space-y-6 animate-in fade-in duration-300">
           <div className="flex justify-between items-end">
@@ -176,18 +185,26 @@ export default function CommercialAdmin() {
               </p>
             </div>
             <button 
-              onClick={() => setShowQuoteBuilder(!showQuoteBuilder)} 
+              onClick={() => {
+                setShowQuoteBuilder(!showQuoteBuilder);
+                setQuoteToRevise(null); // Si se abre manualmente, es nueva, no revisión
+              }} 
               className="flex items-center gap-2 bg-gradient-to-r from-cyan-600 to-blue-600 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-cyan-500/25 hover:translate-y-[-2px] transition-all"
             >
               {showQuoteBuilder ? 'Ver Historial' : <><Plus className="w-5 h-5" /> Crear Cotización</>}
             </button>
           </div>
+          
           {showQuoteBuilder ? (
-            <QuoteBuilder />
+            <QuoteBuilder 
+              initialData={quoteToRevise} // Inyectamos los datos si es revisión
+              onSuccess={handleQuoteSuccess}
+            />
           ) : (
             <QuotesList 
               selectedClient={quoteFilterClient} 
               onClearFilter={() => setQuoteFilterClient(null)} 
+              onCreateRevision={handleCreateRevision} // Pasamos el handler
             />
           )}
         </div>
