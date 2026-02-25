@@ -24,7 +24,7 @@ interface AuthContextType {
   canDelete: boolean;
   canEdit: boolean;
   canCreate: boolean;
-  signOut: () => Promise<void>; // Agregamos signOut para facilitar
+  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -50,7 +50,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setError(null);
       } else {
         if (retries > 0) {
-          // Reintento silencioso
           setTimeout(() => fetchProfile(userId, retries - 1), 1000);
         } else {
           console.warn('Perfil no encontrado');
@@ -91,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await fetchProfile(newSession.user.id);
         } else {
           setProfile(null);
-          setLoading(false); // Asegurar que loading termine al salir
+          setLoading(false);
         }
       }
     });
@@ -108,7 +107,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
   };
 
-  // Lógica de Roles
   const role = profile?.role || null;
   const isAuthenticated = !!session;
   const isSuperAdmin = role === 'super_admin';
@@ -136,7 +134,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-// Hook para consumir el contexto
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
