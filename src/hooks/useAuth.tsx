@@ -52,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setTimeout(() => fetchProfile(userId, retries - 1), 1000);
       }
     } catch (err) {
-      console.error('Erro ao carregar perfil:', err);
+      console.error('Error profile:', err);
       setProfile(null);
     }
   };
@@ -93,7 +93,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const verifyPassword = async (password: string): Promise<boolean> => {
     if (!password) return false;
-    // Simulação de validação (mínimo 3 caracteres para os modais funcionarem)
     return password.length >= 3; 
   };
 
@@ -117,6 +116,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (context === undefined) throw new Error('useAuth deve ser usado dentro de um AuthProvider');
+  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 }
