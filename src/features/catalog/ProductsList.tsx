@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Loader2, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
 import { Product } from '../../types/product';
 import { useProductCatalog } from '../../hooks/useProductCatalog';
 import ProductStats from './ProductStats';
 import ProductFilters from './ProductFilters';
 import ProductTable from './ProductTable';
+// CAMBIO: Importamos el Modal de Contraseña
+import { PasswordDeleteModal } from '../../components/ui/SecurityModals'; 
 
 interface Props {
   onEditProduct: (product: Product) => void;
@@ -12,19 +14,44 @@ interface Props {
 
 export default function ProductsList({ onEditProduct }: Props) {
   const {
-    products, 
-    stats, 
-    availableCategories, // <--- Recibimos del hook
-    loading, 
-    error,
+    products, stats, availableCategories, loading, error,
     searchTerm, setSearchTerm,
     categoryFilter, setCategoryFilter,
     showLowStockOnly, setShowLowStockOnly,
     currentPage, totalPages, setCurrentPage,
-    deleteProduct,
-    refreshProducts
+    deleteProduct, refreshProducts
   } = useProductCatalog();
 
+  // ESTADOS PARA EL MODAL DE SEGURIDAD
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  // CAMBIO: Guardamos el producto entero para mostrar su nombre en el modal
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // 1. Cuando hacen click en el basurero de la tabla
+  const onRequestDelete = (id: string) => {
+    // Buscamos el producto en la lista actual para obtener su nombre
+    const product = products?.find(p => p.id === id);
+    if (product) {
+      setProductToDelete(product);
+      setDeleteModalOpen(true);
+    }
+  };
+
+  // 2. Cuando la contraseña es correcta y confirman en el modal
+  const handleConfirmDelete = async () => {
+    if (!productToDelete) return;
+    
+    setIsDeleting(true);
+    // El hook useProductCatalog -> useProducts ya maneja la lógica de BD y Toasts
+    await deleteProduct(productToDelete.id);
+    
+    setIsDeleting(false);
+    setDeleteModalOpen(false);
+    setProductToDelete(null);
+  };
+
+  // MANEJO DE ESTADOS DE CARGA Y ERROR
   if (loading && (!products || products.length === 0)) {
     return (
       <div className="flex flex-col items-center justify-center py-20 animate-pulse">
@@ -47,13 +74,8 @@ export default function ProductsList({ onEditProduct }: Props) {
 
   return (
     <div className="space-y-6">
-      <ProductStats 
-        totalSku={stats.totalSku} 
-        totalValue={stats.totalValue} 
-        criticalStock={stats.criticalStock} 
-      />
+      <ProductStats totalSku={stats.totalSku} totalValue={stats.totalValue} criticalStock={stats.criticalStock} />
 
-      {/* AQUÍ ESTÁ LA CLAVE: Pasamos availableCategories con un fallback por seguridad */}
       <ProductFilters 
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
@@ -61,15 +83,16 @@ export default function ProductsList({ onEditProduct }: Props) {
         onCategoryChange={setCategoryFilter}
         showLowStockOnly={showLowStockOnly}
         onToggleLowStock={() => setShowLowStockOnly(!showLowStockOnly)}
-        availableCategories={availableCategories || []} // <--- Seguridad anti-crash
+        availableCategories={availableCategories || []}
       />
 
       <ProductTable 
         products={products || []}
         onEdit={onEditProduct}
-        onDelete={deleteProduct}
+        onDelete={onRequestDelete} // Pasa el ID hacia arriba
       />
 
+      {/* Paginación */}
       {totalPages > 1 && (
         <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-xl border border-slate-800">
           <button 
@@ -93,6 +116,15 @@ export default function ProductsList({ onEditProduct }: Props) {
           </button>
         </div>
       )}
+
+      {/* NUEVO MODAL ESTANDARIZADO */}
+      <PasswordDeleteModal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={handleConfirmDelete}
+        loading={isDeleting}
+        itemName={productToDelete?.name} // Mostramos el nombre del producto (ej: "Sensor M12")
+      />
     </div>
   );
 }
