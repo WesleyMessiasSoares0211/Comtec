@@ -27,7 +27,7 @@ const FallbackLoader = () => (
   </div>
 );
 
-// Layout Público (Landing Page y Catálogo)
+// Layout Público
 const PublicLayout = () => {
   const { session } = useAuth();
   return (
@@ -43,7 +43,7 @@ const PublicLayout = () => {
   );
 };
 
-// Layout Privado (Dashboard CRM)
+// Layout Privado
 const PrivateLayout = () => {
   const { session, loading } = useAuth();
   const location = useLocation();
@@ -67,6 +67,7 @@ const PrivateLayout = () => {
 
 export default function App() {
   const navigate = useNavigate();
+  const { session } = useAuth();
 
   return (
     <>
@@ -78,11 +79,13 @@ export default function App() {
           <Route path="/catalog" element={<CatalogPage />} />
           <Route path="/product/:id" element={<ProductDetailPage />} />
           <Route path="/quote/docs" element={<QuoteDocsViewer />} />
-          {/* CORRECCIÓN: Pasamos onLoginSuccess para evitar el crash al loguear */}
-          <Route path="/login" element={<LoginPage onLoginSuccess={() => navigate('/app')} />} />
+          <Route 
+            path="/login" 
+            element={session ? <Navigate to="/app" /> : <LoginPage onLoginSuccess={() => navigate('/app')} />} 
+          />
         </Route>
 
-        {/* ZONA PRIVADA (URL /app) */}
+        {/* ZONA PRIVADA */}
         <Route path="/app" element={<PrivateLayout />}>
           <Route index element={<Dashboard />} />
           <Route path="quotes" element={<Quotes />} />
@@ -90,6 +93,7 @@ export default function App() {
           <Route path="clients" element={<Clients />} />
         </Route>
 
+        {/* REDIRECCIONES */}
         <Route path="/admin" element={<Navigate to="/app" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
