@@ -1,37 +1,40 @@
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom'; // CORRECCIÓN: Usar params de búsqueda
 import { supabase } from '../lib/supabase';
 import { FileText, Download, Package, AlertCircle, ShieldCheck } from 'lucide-react';
 import { QuoteItem } from '../types/quotes';
 
 export default function QuoteDocsViewer() {
-  const { folio } = useParams();
+  const [searchParams] = useSearchParams();
+  const folio = searchParams.get('folio'); // CORRECCIÓN: Leer del query string
+  
   const [loading, setLoading] = useState(true);
   const [itemsWithDocs, setItemsWithDocs] = useState<QuoteItem[]>([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (folio) fetchQuoteDocs();
+    else {
+        setLoading(false);
+        setError('Folio no especificado');
+    }
   }, [folio]);
 
   const fetchQuoteDocs = async () => {
     try {
-      // 1. Decodificar el folio (por si viene con caracteres especiales en URL)
-      const decodedFolio = decodeURIComponent(folio || '');
-
-      // 2. Buscar la cotización y sus ítems
+      // Nota: React Router ya entrega 'folio' decodificado si viene en searchParams
       const { data, error } = await supabase
         .from('crm_quotes')
         .select('items')
-        .eq('folio', decodedFolio)
+        .eq('folio', folio)
         .single();
 
       if (error) throw error;
 
       if (data && data.items) {
-        // 3. Filtrar solo los productos que tienen datasheet_url
         const docs = (data.items as QuoteItem[]).filter(
-          item => item.datasheet_url && item.datasheet_url.length > 5
+          item => (item.datasheet_url && item.datasheet_url.length > 5) || 
+                  (item.technical_spec_url && item.technical_spec_url.length > 5)
         );
         setItemsWithDocs(docs);
       }
@@ -43,6 +46,7 @@ export default function QuoteDocsViewer() {
     }
   };
 
+  // ... (RESTO DEL RENDERIZADO VISUAL SE MANTIENE IGUAL)
   if (loading) return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center">
       <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-cyan-500"></div>
@@ -52,8 +56,6 @@ export default function QuoteDocsViewer() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 p-6 md:p-12">
       <div className="max-w-2xl mx-auto space-y-8">
-        
-        {/* HEADER */}
         <div className="text-center space-y-2">
           <div className="inline-flex p-3 rounded-2xl bg-cyan-500/10 mb-4">
             <ShieldCheck className="w-8 h-8 text-cyan-400" />
@@ -62,7 +64,6 @@ export default function QuoteDocsViewer() {
           <p className="text-slate-400">Carpeta Digital para Cotización <span className="text-cyan-400 font-mono">{folio}</span></p>
         </div>
 
-        {/* LISTA DE ARCHIVOS */}
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl">
           {error ? (
             <div className="text-center py-8 text-red-400">
@@ -91,7 +92,7 @@ export default function QuoteDocsViewer() {
                   </div>
                   
                   <a 
-                    href={item.datasheet_url} 
+                    href={item.datasheet_url || item.technical_spec_url} 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="p-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-colors shadow-lg shadow-cyan-900/20"
@@ -104,8 +105,6 @@ export default function QuoteDocsViewer() {
             </div>
           )}
         </div>
-
-        {/* FOOTER */}
         <div className="text-center text-xs text-slate-600">
           <p>© {new Date().getFullYear()} Comtec Industrial Solutions</p>
         </div>
