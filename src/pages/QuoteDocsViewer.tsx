@@ -1,37 +1,41 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom'; // CORRECCIÓN: Usar params de búsqueda
+import { useSearchParams } from 'react-router-dom'; // CAMBIO: Usamos useSearchParams
 import { supabase } from '../lib/supabase';
 import { FileText, Download, Package, AlertCircle, ShieldCheck } from 'lucide-react';
 import { QuoteItem } from '../types/quotes';
 
 export default function QuoteDocsViewer() {
   const [searchParams] = useSearchParams();
-  const folio = searchParams.get('folio'); // CORRECCIÓN: Leer del query string
+  const folio = searchParams.get('folio'); // CAMBIO: Obtenemos el folio del parámetro ?folio=
   
   const [loading, setLoading] = useState(true);
   const [itemsWithDocs, setItemsWithDocs] = useState<QuoteItem[]>([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (folio) fetchQuoteDocs();
-    else {
+    if (folio) {
+        fetchQuoteDocs();
+    } else {
         setLoading(false);
-        setError('Folio no especificado');
+        setError('Enlace incompleto: No se especificó el folio.');
     }
   }, [folio]);
 
   const fetchQuoteDocs = async () => {
     try {
-      // Nota: React Router ya entrega 'folio' decodificado si viene en searchParams
+      // Nota: searchParams ya decodifica automáticamente, pero por seguridad extra:
+      const decodedFolio = decodeURIComponent(folio || '');
+
       const { data, error } = await supabase
         .from('crm_quotes')
         .select('items')
-        .eq('folio', folio)
+        .eq('folio', decodedFolio) // Buscamos por el folio exacto
         .single();
 
       if (error) throw error;
 
       if (data && data.items) {
+        // Filtramos items que tengan URL de ficha técnica válida
         const docs = (data.items as QuoteItem[]).filter(
           item => (item.datasheet_url && item.datasheet_url.length > 5) || 
                   (item.technical_spec_url && item.technical_spec_url.length > 5)
@@ -46,7 +50,6 @@ export default function QuoteDocsViewer() {
     }
   };
 
-  // ... (RESTO DEL RENDERIZADO VISUAL SE MANTIENE IGUAL)
   if (loading) return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center">
       <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-cyan-500"></div>
@@ -56,6 +59,8 @@ export default function QuoteDocsViewer() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 p-6 md:p-12">
       <div className="max-w-2xl mx-auto space-y-8">
+        
+        {/* HEADER */}
         <div className="text-center space-y-2">
           <div className="inline-flex p-3 rounded-2xl bg-cyan-500/10 mb-4">
             <ShieldCheck className="w-8 h-8 text-cyan-400" />
@@ -64,6 +69,7 @@ export default function QuoteDocsViewer() {
           <p className="text-slate-400">Carpeta Digital para Cotización <span className="text-cyan-400 font-mono">{folio}</span></p>
         </div>
 
+        {/* LISTA DE ARCHIVOS */}
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl">
           {error ? (
             <div className="text-center py-8 text-red-400">
@@ -105,6 +111,8 @@ export default function QuoteDocsViewer() {
             </div>
           )}
         </div>
+
+        {/* FOOTER */}
         <div className="text-center text-xs text-slate-600">
           <p>© {new Date().getFullYear()} Comtec Industrial Solutions</p>
         </div>
