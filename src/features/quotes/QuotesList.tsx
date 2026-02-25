@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { 
   FileText, Calendar, User, Search, 
   AlertCircle, Loader2, Download, CopyPlus,
-  ChevronLeft, ChevronDown, ChevronRight // Iconos para paginación
+  ChevronLeft, ChevronRight, ChevronDown
 } from 'lucide-react';
 import { Client } from '../../types/client';
 import { toast } from 'sonner';
@@ -34,7 +34,7 @@ interface Props {
   onCreateRevision?: (quote: any) => void;
 }
 
-const ITEMS_PER_PAGE = 10; // Cantidad de cotizaciones por página
+const ITEMS_PER_PAGE = 10;
 
 export default function QuotesList({ selectedClient, onClearFilter, onCreateRevision }: Props) {
   const [quotes, setQuotes] = useState<QuoteWithClient[]>([]);
@@ -56,7 +56,7 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchQuotes();
-    }, 300); // Debounce para búsqueda
+    }, 400); // Un poco más de delay para no saturar búsqueda mientras escribes
     return () => clearTimeout(timer);
   }, [page, searchTerm, selectedClient]);
 
@@ -64,26 +64,32 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
     try {
       setLoading(true);
       
-      // Calcular rango para paginación (0-9, 10-19, etc)
       const from = (page - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
 
-      let query = supabase
-        .from('crm_quotes')
-        .select(`*, client:crm_clients (*)`, { count: 'exact' }) // Pedimos el total exacto
-        .order('created_at', { ascending: false })
-        .range(from, to);
+      let query;
 
-      // Filtro por Cliente (Selector)
-      if (selectedClient) {
-        query = query.eq('client_id', selectedClient.id);
+      if (searchTerm) {
+        // --- MODO BÚSQUEDA INTELIGENTE (RPC) ---
+        // Usa la función SQL para buscar en Cliente, JSON de productos, etc.
+        query = supabase
+          .rpc('search_quotes', { term: searchTerm })
+          .select(`*, client:crm_clients (*)`, { count: 'exact' })
+          .range(from, to);
+          // Nota: El orden ya viene definido en la función SQL
+      } else {
+        // --- MODO ESTÁNDAR ---
+        query = supabase
+          .from('crm_quotes')
+          .select(`*, client:crm_clients (*)`, { count: 'exact' })
+          .order('created_at', { ascending: false })
+          .range(from, to);
       }
 
-      // Filtro por Búsqueda de Texto (Folio)
-      // Nota: Filtrar por nombre de cliente en relación requiere lógica compleja,
-      // por rendimiento priorizamos búsqueda por Folio o usamos el filtro de cliente arriba.
-      if (searchTerm) {
-        query = query.ilike('folio', `%${searchTerm}%`);
+      // Filtro Adicional por Cliente (Selector Superior)
+      // Esto funciona incluso sobre el RPC gracias a que retorna SETOF crm_quotes
+      if (selectedClient) {
+        query = query.eq('client_id', selectedClient.id);
       }
 
       const { data, error, count } = await query;
@@ -105,7 +111,6 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
      setDownloadingId(quote.id);
      try {
        const baseUrl = window.location.origin;
-       // URL Segura con parámetros
        const docsUrl = `${baseUrl}/quote/docs?folio=${encodeURIComponent(quote.folio)}`;
        const qrDataUrl = await QRCode.toDataURL(docsUrl, { width: 200, margin: 2 });
        
@@ -156,7 +161,7 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             <input 
               type="text"
-              placeholder="Buscar por Folio..."
+              placeholder="Buscar Folio, Cliente, Producto, Estado..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 pl-10 text-sm text-white focus:ring-1 focus:ring-cyan-500 outline-none"
@@ -200,36 +205,33 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
                               </span>
                            )}
 
-                           {/* SELECTOR DE ESTADO */}
+                           {/* SELECTOR DE ESTADO CON ICONO */}
                            <div className="relative group/status inline-block">
-                          <select
-                            value={quote.estado}
-                            disabled={updatingId === quote.id}
-                            onChange={(e) => handleStatusChange(quote.id, e.target.value)}
-                            // CAMBIO: Cambiamos 'px-2' por 'pl-2 pr-6' para dejar espacio al icono
-                            className={`appearance-none cursor-pointer text-[10px] pl-2 pr-6 py-0.5 rounded-full border uppercase font-bold outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-slate-900 ${getStatusColor(quote.estado)} ${updatingId === quote.id ? 'opacity-50' : ''}`}
-                            style={{ textAlignLast: 'center' }}
-                          >
-                            <option value="Pendiente" className="bg-slate-900 text-amber-400">Pendiente</option>
-                            <option value="Aceptada" className="bg-slate-900 text-emerald-400">Aceptada</option>
-                            <option value="Facturada" className="bg-slate-900 text-blue-400">Facturada</option>
-                            <option value="Rechazada" className="bg-slate-900 text-red-400">Rechazada</option>
-                          </select>
-                        
-                          {/* ICONO CHEVRON (Solo visible si no está cargando) */}
-                          {updatingId !== quote.id && (
-                            <div className="absolute inset-y-0 right-1.5 flex items-center pointer-events-none">
-                              <ChevronDown className="w-3 h-3 opacity-60" />
-                            </div>
-                          )}
-                        
-                          {/* LOADER (Visible al actualizar) */}
-                          {updatingId === quote.id && (
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                              <Loader2 className="w-3 h-3 animate-spin text-white" />
-                            </div>
-                          )}
-                        </div>
+                             <select
+                               value={quote.estado}
+                               disabled={updatingId === quote.id}
+                               onChange={(e) => handleStatusChange(quote.id, e.target.value)}
+                               className={`appearance-none cursor-pointer text-[10px] pl-2 pr-6 py-0.5 rounded-full border uppercase font-bold outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-slate-900 ${getStatusColor(quote.estado)} ${updatingId === quote.id ? 'opacity-50' : ''}`}
+                               style={{ textAlignLast: 'center' }}
+                             >
+                               <option value="Pendiente" className="bg-slate-900 text-amber-400">Pendiente</option>
+                               <option value="Aceptada" className="bg-slate-900 text-emerald-400">Aceptada</option>
+                               <option value="Facturada" className="bg-slate-900 text-blue-400">Facturada</option>
+                               <option value="Rechazada" className="bg-slate-900 text-red-400">Rechazada</option>
+                             </select>
+                             
+                             {updatingId !== quote.id && (
+                               <div className="absolute inset-y-0 right-1.5 flex items-center pointer-events-none">
+                                 <ChevronDown className="w-3 h-3 opacity-60" />
+                               </div>
+                             )}
+
+                             {updatingId === quote.id && (
+                               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                 <Loader2 className="w-3 h-3 animate-spin text-white" />
+                               </div>
+                             )}
+                           </div>
                         </div>
                         <p className="text-slate-500 text-xs flex items-center gap-2 mt-1">
                           <User className="w-3 h-3" /> {quote.client?.razon_social}
