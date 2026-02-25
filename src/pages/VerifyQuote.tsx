@@ -2,28 +2,36 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { 
-  ShieldCheck, FileText, AlertTriangle, Loader2, ChevronRight,
-  Building2, Layers, Printer
+  ShieldCheck, 
+  FileText, 
+  AlertTriangle, 
+  Loader2, 
+  ChevronRight,
+  Building2,
+  Layers,
+  Printer,
+  Download
 } from 'lucide-react';
 import { Quote } from '../types/quotes';
+import { generateQuotePDF } from '../utils/pdfGenerator'; // Importamos el generador oficial
+import { toast } from 'sonner';
+import QRCode from 'qrcode'; // Necesario para regenerar el QR del PDF
 
-// CORRECCIÓN: Aceptamos folio como prop (que viene del Wrapper en App.tsx)
+// Aceptamos folio como prop por si viene del router
 interface Props {
   folio?: string;
 }
 
 export default function VerifyQuote({ folio: propFolio }: Props) {
   const [searchParams] = useSearchParams();
-  
-  // LÓGICA DE PRIORIDAD: Usar el prop si existe (ruta), si no, usar searchParams
   const folio = propFolio || searchParams.get('folio');
   
   const [quote, setQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   useEffect(() => {
     async function fetchQuote() {
-      // Decodificamos por seguridad, aunque React Router suele hacerlo
       const decodedFolio = folio ? decodeURIComponent(folio) : null;
 
       if (!decodedFolio) {
@@ -32,11 +40,12 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
       }
 
       try {
+        // CORRECCIÓN: Solicitamos todos los datos del cliente para el PDF
         const { data, error } = await supabase
           .from('crm_quotes')
           .select(`
             *,
-            crm_clients (razon_social, rut)
+            crm_clients (*)
           `)
           .eq('folio', decodedFolio)
           .maybeSingle();
@@ -53,18 +62,71 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
     fetchQuote();
   }, [folio]);
 
-  // ... (RESTO DEL CÓDIGO IGUAL: handlePrintQuote, renderizado, etc.)
-  
-  const handlePrintQuote = () => { window.print(); };
+  // --- FUNCIÓN CORREGIDA: Generar PDF Oficial ---
+  const handleDownloadOfficialPDF = async () => {
+    if (!quote || !(quote as any).crm_clients) return;
+    
+    setIsGeneratingPdf(true);
+    try {
+      // 1. Reconstruir objeto Cliente
+      const clientData = (quote as any).crm_clients;
+      
+      // 2. Generar URL y Código QR para el PDF
+      const baseUrl = window.location.origin;
+      const docsUrl = `${baseUrl}/quote/docs?folio=${encodeURIComponent(quote.folio)}`;
+      
+      const qrDataUrl = await QRCode.toDataURL(docsUrl, {
+        width: 200,
+        margin: 1,
+        color: { dark: '#000000', light: '#ffffff' }
+      });
 
+      // 3. Invocar al Generador Oficial
+      const success = generateQuotePDF({
+        folio: quote.folio,
+        items: quote.items,
+        subtotal_neto: quote.subtotal_neto,
+        iva: quote.iva,
+        total_bruto: quote.total_bruto || quote.total, // Soporte retroactivo
+        created_at: quote.created_at,
+        notes: quote.notes,
+        terms: quote.terms,
+        validity_days: quote.validity_days,
+        version: quote.version
+      }, clientData, qrDataUrl);
+
+      if (success) toast.success("PDF Oficial descargado");
+      else toast.error("Error al generar el PDF");
+
+    } catch (err) {
+      console.error(err);
+      toast.error("Error técnico al generar PDF");
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
+  // --- FUNCIÓN CORREGIDA: Descargar Fichas ---
   const handleDownloadAllSpecs = () => {
     if (!quote || !quote.items) return;
+    
+    // CORRECCIÓN: Usamos 'datasheet_url' (y 'technical_spec_url' por compatibilidad)
     const urls = quote.items
-      .map(item => item.technical_spec_url) // Ojo: asegura que sea technical_spec_url o datasheet_url según tu esquema
-      .filter((url): url is string => !!url);
-    if (urls.length === 0) return;
+      .map(item => item.datasheet_url || item.technical_spec_url)
+      .filter((url): url is string => !!url && url.length > 5);
+
+    if (urls.length === 0) {
+      toast.info("No hay fichas técnicas disponibles para estos productos.");
+      return;
+    }
+
+    toast.info(`Iniciando descarga de ${urls.length} fichas...`);
+    
+    // Abrir en pestañas separadas con un pequeño retraso para evitar bloqueo
     urls.forEach((url, index) => {
-      setTimeout(() => window.open(url, '_blank'), index * 300);
+      setTimeout(() => {
+        window.open(url, '_blank');
+      }, index * 500);
     });
   };
 
@@ -92,7 +154,8 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
     </div>
   );
 
-  const hasTechSpecs = quote.items?.some(i => i.technical_spec_url || i.datasheet_url); // Ajustado para soportar ambos nombres
+  // Verificamos si hay fichas usando ambos nombres de columna posibles
+  const hasTechSpecs = quote.items?.some(i => i.datasheet_url || i.technical_spec_url);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 selection:bg-cyan-500/30 font-sans print:bg-white print:text-black">
@@ -112,60 +175,75 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
           <p className="text-slate-500 text-sm font-medium">Documento emitido por Comtec Industrial</p>
         </div>
 
-        {/* Acciones */}
+        {/* ACCIONES PRINCIPALES */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8 print:hidden">
-          <button onClick={handlePrintQuote} className="bg-orange-600 hover:bg-orange-500 text-white font-black py-4 rounded-2xl shadow-xl shadow-orange-950/40 flex items-center justify-center gap-3 transition-all active:scale-[0.98] border border-orange-400/20">
-            <Printer className="w-5 h-5" />
-            <span className="text-sm tracking-tight uppercase">Imprimir / Guardar PDF Oferta</span>
+          {/* BOTÓN 1: Descargar PDF Oficial */}
+          <button 
+            onClick={handleDownloadOfficialPDF}
+            disabled={isGeneratingPdf}
+            className="bg-orange-600 hover:bg-orange-500 text-white font-black py-4 rounded-2xl shadow-xl shadow-orange-950/40 flex items-center justify-center gap-3 transition-all active:scale-[0.98] border border-orange-400/20 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isGeneratingPdf ? <Loader2 className="w-5 h-5 animate-spin" /> : <Printer className="w-5 h-5" />}
+            <span className="text-sm tracking-tight uppercase">
+              {isGeneratingPdf ? 'Generando...' : 'Descargar PDF Oficial'}
+            </span>
           </button>
+
+          {/* BOTÓN 2: Descargar Fichas */}
           {hasTechSpecs && (
-            <button onClick={handleDownloadAllSpecs} className="bg-slate-800 hover:bg-slate-700 text-white font-black py-4 rounded-2xl border border-slate-700 flex items-center justify-center gap-3 transition-all active:scale-[0.98]">
+            <button 
+              onClick={handleDownloadAllSpecs}
+              className="bg-slate-800 hover:bg-slate-700 text-white font-black py-4 rounded-2xl border border-slate-700 flex items-center justify-center gap-3 transition-all active:scale-[0.98]"
+            >
               <Layers className="w-5 h-5 text-cyan-500" />
               <span className="text-sm tracking-tight uppercase">Descargar Fichas Técnicas</span>
             </button>
           )}
         </div>
 
-        {/* Certificado */}
-        <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-3xl overflow-hidden shadow-2xl mb-8 print:bg-white print:border-none print:shadow-none print:text-black">
-          <div className="p-8 border-b border-slate-800 bg-gradient-to-br from-slate-900/50 to-slate-950/50 print:bg-none print:border-b-2 print:border-black">
+        {/* Certificado Visual (Solo para lectura en pantalla) */}
+        <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-3xl overflow-hidden shadow-2xl mb-8">
+          <div className="p-8 border-b border-slate-800 bg-gradient-to-br from-slate-900/50 to-slate-950/50">
             <div className="flex justify-between items-start mb-8">
               <div>
-                <p className="text-slate-500 text-[10px] uppercase font-black tracking-widest mb-1 print:text-black">Folio Registrado</p>
-                <p className="text-cyan-500 font-mono text-3xl font-bold tracking-tight print:text-black">{quote.folio}</p>
+                <p className="text-slate-500 text-[10px] uppercase font-black tracking-widest mb-1">Folio Registrado</p>
+                <p className="text-cyan-500 font-mono text-3xl font-bold tracking-tight">{quote.folio}</p>
               </div>
               <div className="text-right">
-                <p className="text-slate-500 text-[10px] uppercase font-black tracking-widest mb-1 print:text-black">Fecha de Emisión</p>
-                <p className="text-white font-bold print:text-black">{new Date(quote.created_at).toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
+                <p className="text-slate-500 text-[10px] uppercase font-black tracking-widest mb-1">Fecha de Emisión</p>
+                <p className="text-white font-bold">{new Date(quote.created_at).toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-4 bg-slate-950/80 p-5 rounded-2xl border border-slate-800/50 print:bg-slate-100 print:border-black">
-              <div className="bg-cyan-500/10 p-3 rounded-xl border border-cyan-500/20 print:hidden">
+            <div className="flex items-center gap-4 bg-slate-950/80 p-5 rounded-2xl border border-slate-800/50">
+              <div className="bg-cyan-500/10 p-3 rounded-xl border border-cyan-500/20">
                 <Building2 className="w-6 h-6 text-cyan-400" />
               </div>
               <div className="min-w-0">
-                <p className="text-slate-500 text-[10px] uppercase font-black tracking-widest mb-0.5 print:text-black">Cliente Titular</p>
-                <p className="text-white font-bold leading-tight truncate print:text-black">{(quote as any).crm_clients?.razon_social}</p>
-                <p className="text-cyan-500/60 font-mono text-xs mt-1 print:text-black">{(quote as any).crm_clients?.rut}</p>
+                <p className="text-slate-500 text-[10px] uppercase font-black tracking-widest mb-0.5">Cliente Titular</p>
+                <p className="text-white font-bold leading-tight truncate">{(quote as any).crm_clients?.razon_social}</p>
+                <p className="text-cyan-500/60 font-mono text-xs mt-1">{(quote as any).crm_clients?.rut}</p>
               </div>
             </div>
           </div>
 
           <div className="p-8">
-            <h3 className="text-slate-400 font-black text-[10px] uppercase tracking-[0.2em] mb-6 flex items-center gap-2 print:text-black">
-              <FileText className="w-4 h-4 text-cyan-500 print:hidden" /> Detalle de Productos
+            <h3 className="text-slate-400 font-black text-[10px] uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
+              <FileText className="w-4 h-4 text-cyan-500" />
+              Detalle de Productos Cotizados
             </h3>
+            
             <div className="space-y-3">
               {quote.items?.map((item, idx) => (
-                <div key={idx} className="group relative bg-slate-950/40 border border-slate-800/50 p-4 rounded-2xl print:bg-white print:border-black print:text-black">
+                <div key={idx} className="group relative bg-slate-950/40 border border-slate-800/50 p-4 rounded-2xl">
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex-1 min-w-0">
-                      <p className="text-[10px] font-mono text-cyan-500 mb-0.5 font-bold tracking-tighter print:text-black">P/N: {item.part_number}</p>
-                      <h4 className="text-white font-bold text-sm truncate print:text-black">{item.name}</h4>
+                      <p className="text-[10px] font-mono text-cyan-500 mb-0.5 font-bold tracking-tighter">P/N: {item.part_number}</p>
+                      <h4 className="text-white font-bold text-sm truncate">{item.name}</h4>
                     </div>
-                    {(item.technical_spec_url || item.datasheet_url) && (
-                      <div className="bg-cyan-500/10 text-cyan-400 p-1.5 rounded-lg border border-cyan-500/20 print:hidden">
+                    
+                    {(item.datasheet_url || item.technical_spec_url) && (
+                      <div className="bg-cyan-500/10 text-cyan-400 p-1.5 rounded-lg border border-cyan-500/20" title="Ficha disponible">
                         <Layers className="w-4 h-4" />
                       </div>
                     )}
@@ -173,21 +251,25 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
                 </div>
               ))}
             </div>
-            <div className="mt-8 pt-6 border-t border-slate-800 print:border-black">
+
+            <div className="mt-8 pt-6 border-t border-slate-800">
                <div className="flex justify-between items-center">
-                 <span className="text-slate-500 text-xs font-bold uppercase print:text-black">Total Oferta Comercial (Neto):</span>
-                 <span className="text-white font-mono font-bold text-xl print:text-black">${Number(quote.total || quote.total_bruto || 0).toLocaleString('es-CL')}</span>
+                 <span className="text-slate-500 text-xs font-bold uppercase">Total Oferta Comercial (Neto):</span>
+                 <span className="text-white font-mono font-bold text-xl">
+                   ${Number(quote.total || quote.total_bruto || 0).toLocaleString('es-CL')}
+                 </span>
                </div>
             </div>
           </div>
         </div>
 
         <div className="text-center px-4">
-          <p className="text-slate-600 text-[10px] font-black uppercase tracking-[0.3em] mb-4 print:text-black">Comtec Industrial Solutions</p>
-          <p className="text-slate-500 text-[11px] leading-relaxed italic print:text-black">"Este certificado garantiza que la oferta comercial adjunta ha sido generada bajo los estándares de calidad de Comtec Industrial."</p>
+          <p className="text-slate-600 text-[10px] font-black uppercase tracking-[0.3em] mb-4">Comtec Industrial Solutions</p>
+          <p className="text-slate-500 text-[11px] leading-relaxed italic">
+            "Este certificado digital confirma la autenticidad de la oferta comercial en nuestros registros."
+          </p>
         </div>
       </div>
-      <style dangerouslySetInnerHTML={{ __html: ` @media print { body { background: white !important; } .no-print { display: none !important; } @page { margin: 2cm; } } `}} />
     </div>
   );
 }
