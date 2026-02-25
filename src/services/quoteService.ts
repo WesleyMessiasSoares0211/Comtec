@@ -7,43 +7,42 @@ export interface QuotePayload {
   subtotal_neto: number;
   iva: number;
   total_bruto: number;
+  // Nuevos campos V2
   notes?: string;
   terms?: string;
   validity_days?: number;
   version?: number;
-  folio?: string; // Nuevo: Opcional, si viene es una revisión
-  parent_quote_id?: string; // Nuevo: ID de la cotización original
+  parent_quote_id?: string; // Para futuras revisiones
 }
 
 export const quoteService = {
+  // 1. Obtener el siguiente folio disponible (Sin consumirlo, solo para vista previa si quisieras)
+  // Nota: Lo ideal es generarlo al guardar para evitar huecos.
+  
   async create(payload: QuotePayload) {
     try {
-      let folioToUse = payload.folio;
+      // A. Generar Folio Automático usando la función SQL
+      const { data: folio, error: folioError } = await supabase
+        .rpc('get_next_quote_folio');
 
-      // 1. Si NO traemos folio (es nueva), generamos uno nuevo automático
-      if (!folioToUse) {
-        const { data: newFolio, error: folioError } = await supabase
-          .rpc('get_next_quote_folio');
-        if (folioError) throw folioError;
-        folioToUse = newFolio;
-      }
+      if (folioError) throw folioError;
 
-      // 2. Insertar Cotización (Sea nueva o revisión)
+      // B. Insertar la Cotización
       const { data, error } = await supabase
         .from('crm_quotes')
         .insert([{
-          folio: folioToUse, // Usamos el folio determinado
+          folio: folio, // Usamos el folio que nos dio la BBDD (ej: COT-001/2026)
           client_id: payload.client_id,
           items: payload.items,
           subtotal_neto: payload.subtotal_neto,
           iva: payload.iva,
           total_bruto: payload.total_bruto,
-          estado: 'Pendiente', // Las revisiones nacen pendientes
+          estado: 'Pendiente',
+          // Campos V2
           notes: payload.notes,
           terms: payload.terms,
           validity_days: payload.validity_days || 15,
-          version: payload.version || 1, // Si es revisión, vendrá > 1
-          parent_quote_id: payload.parent_quote_id // Vinculación histórica
+          version: payload.version || 1
         }])
         .select()
         .single();
@@ -52,8 +51,13 @@ export const quoteService = {
       return data;
 
     } catch (error) {
-      console.error("Error creating quote:", error);
+      console.error("Error en servicio de cotizaciones:", error);
       throw error;
     }
+  },
+
+  // Método para futura implementación de "Nueva Versión"
+  async createRevision(originalQuoteId: string) {
+    // Lógica pendiente para Fase 4: Clonar datos y aumentar versión
   }
 };
