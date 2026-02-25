@@ -127,7 +127,7 @@ export default function App() {
             <Route path="/clients" element={<ClientsPage onNavigate={(p) => handleGlobalNavigate(navigate, p)} />} />
             
             {/* Rutas de Negocio Públicas (QR y Docs) */}
-            <Route path="/quote/:folio/docs" element={<QuoteDocsViewer />} />
+            <Route path="/quote/docs" element={<QuoteDocsViewer />} />
             <Route path="/verify/:folio" element={<VerifyWrapper />} />
             
             {/* Login (Redirige si ya hay sesión) */}
