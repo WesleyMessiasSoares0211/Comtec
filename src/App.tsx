@@ -5,15 +5,15 @@ import { Toaster } from 'sonner';
 import { useAuth } from './hooks/useAuth';
 
 // --- LAYOUTS ---
-import Sidebar from './components/layout/Sidebar'; 
-import Header from './components/Header'; 
-import Footer from './components/Footer'; 
+import Sidebar from './components/layout/Sidebar';
+import Header from './components/Header';
+import Footer from './components/Footer';
 
 // --- PÁGINAS PÚBLICAS (Lazy Loading) ---
 const HomePage = lazy(() => import('./pages/HomePage'));
 const CatalogPage = lazy(() => import('./pages/CatalogPage'));
 const ProductDetailPage = lazy(() => import('./pages/ProductDetailPage'));
-const LoginPage = lazy(() => import('./pages/Login')); 
+const LoginPage = lazy(() => import('./pages/Login')); // Renombrado para claridad
 const QuoteDocsViewer = lazy(() => import('./pages/QuoteDocsViewer'));
 
 // --- PÁGINAS PRIVADAS (App Interna) ---
@@ -23,7 +23,6 @@ const Products = lazy(() => import('./pages/Products'));
 const Clients = lazy(() => import('./pages/Clients'));
 
 // --- COMPONENTES AUXILIARES ---
-
 const FallbackLoader = () => (
   <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-4">
     <Loader2 className="w-10 h-10 text-cyan-500 animate-spin" />
@@ -39,7 +38,7 @@ const PublicLayout = () => {
       <Header session={session} />
       <main className="flex-1 w-full">
         <Suspense fallback={<FallbackLoader />}>
-          <Outlet /> 
+          <Outlet />
         </Suspense>
       </main>
       <Footer />
@@ -76,6 +75,7 @@ export default function App() {
   return (
     <>
       <Toaster position="top-right" theme="dark" richColors closeButton />
+      
       <Routes>
         {/* ZONA PÚBLICA */}
         <Route element={<PublicLayout />}>
