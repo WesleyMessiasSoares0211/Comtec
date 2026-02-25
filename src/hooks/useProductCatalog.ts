@@ -77,6 +77,7 @@ export function useProductCatalog() {
     // Datos procesados
     products: paginatedProducts,
     allProductsCount: filteredProducts.length,
+    availableCategories,
     stats,
     loading,
     error,
