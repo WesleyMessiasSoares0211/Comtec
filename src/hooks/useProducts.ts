@@ -30,7 +30,6 @@ export function useProducts() {
     }
   }, []);
 
-  // Función de eliminar actualizada
   const deleteProduct = async (id: string) => {
     try {
       const { error: deleteError } = await supabase
@@ -52,8 +51,9 @@ export function useProducts() {
 
       toast.success("Producto eliminado correctamente");
       
-      // RECARGA COMPLETA: Volvemos a pedir los datos a la DB para asegurar sincronía
-      await fetchProducts(); 
+      // CORRECCIÓN CLAVE: Actualización Optimista
+      // En lugar de recargar todo (lento), quitamos el ítem de la lista localmente (instantáneo)
+      setProducts(prev => prev.filter(item => item.id !== id));
 
     } catch (err: any) {
       console.error("Error eliminando:", err);
