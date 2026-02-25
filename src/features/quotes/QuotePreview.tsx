@@ -46,9 +46,13 @@ export default function QuotePreview({ client, items, totals, onClose, notes, te
 
       // 2. Generar QR Real apuntando a la Carpeta Digital
       // La URL apunta a la vista de documentos que creamos anteriormente
-      const docsUrl = `${baseUrl}/quote/${savedQuote.folio}/docs`;
-      
-      let qrDataUrl = '';
+     const docsUrl = `${baseUrl}/quote/${encodeURIComponent(savedQuote.folio)}/docs`;
+  
+  const qrDataUrl = await QRCode.toDataURL(docsUrl, {
+    width: 200,
+    margin: 1,
+    color: { dark: '#000000', light: '#ffffff' }
+  });
       try {
         qrDataUrl = await QRCode.toDataURL(docsUrl, {
           width: 200,
