@@ -115,13 +115,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!password) return false;
     
     // Si quisieras validar realmente, descomenta esto (requiere manejo de errores):
-    /*
+    
     const { error } = await supabase.auth.signInWithPassword({
       email: session?.user.email || '',
       password: password
     });
     return !error;
-    */
+   
     
     return true; 
   };
