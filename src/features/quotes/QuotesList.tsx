@@ -74,9 +74,9 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
      try {
        const baseUrl = window.location.origin;
        const docsUrl = `${baseUrl}/quote/${encodeURIComponent(quote.folio)}/docs`;
-       const qrDataUrl = await QRCode.toDataURL(docsUrl, { width: 200, margin: 2 });
-       
+       const qrDataUrl = await QRCode.toDataURL(docsUrl, { width: 200, margin: 2 });       
        const success = generateQuotePDF(quote, quote.client, qrDataUrl);
+       
        if(success) toast.success("Descargado correctamente");
      } catch (e) {
        console.error(e);
