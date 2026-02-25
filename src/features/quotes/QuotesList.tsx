@@ -2,12 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { 
   FileText, Calendar, User, Search, 
-  AlertCircle, Loader2, Download, CopyPlus // Nuevo icono
+  AlertCircle, Loader2, Download, CopyPlus 
 } from 'lucide-react';
 import { Client } from '../../types/client';
 import { toast } from 'sonner';
 import { generateQuotePDF } from '../../utils/pdfGenerator';
-import QRCode from 'qrcode'; // Recuerda importar esto para que funcionen las descargas con QR
+import QRCode from 'qrcode';
+import { quoteService } from '../../services/quoteService'; // Importamos el servicio
 
 interface QuoteWithClient {
   id: string;
@@ -22,71 +23,98 @@ interface QuoteWithClient {
   notes?: string;
   terms?: string;
   validity_days?: number;
-  version?: number; // Soportamos versión
+  version?: number;
   client: Client;
 }
 
 interface Props {
   selectedClient?: Client | null;
   onClearFilter?: () => void;
-  onCreateRevision?: (quote: any) => void; // Prop Nueva
+  onCreateRevision?: (quote: any) => void;
 }
 
 export default function QuotesList({ selectedClient, onClearFilter, onCreateRevision }: Props) {
-  // ... (Estados y useEffect iguales) ...
   const [quotes, setQuotes] = useState<QuoteWithClient[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null); // Estado para bloqueo de UI al editar
 
   useEffect(() => {
     fetchQuotes();
   }, [selectedClient]);
 
   const fetchQuotes = async () => {
-      // ... (Misma lógica de carga) ...
-      // Asegúrate de ordenar por created_at descendente para ver las últimas versiones primero
-      try {
-        setLoading(true);
-        let query = supabase
-          .from('crm_quotes')
-          .select(`*, client:crm_clients (*)`)
-          .order('created_at', { ascending: false });
+    try {
+      setLoading(true);
+      let query = supabase
+        .from('crm_quotes')
+        .select(`*, client:crm_clients (*)`)
+        .order('created_at', { ascending: false });
 
-        if (selectedClient) {
-          query = query.eq('client_id', selectedClient.id);
-        }
-        const { data, error } = await query;
-        if (error) throw error;
-        setQuotes(data || []);
-      } catch (error) {
-        console.error(error);
-        toast.error('Error cargando cotizaciones');
-      } finally {
-        setLoading(false);
+      if (selectedClient) {
+        query = query.eq('client_id', selectedClient.id);
       }
+      const { data, error } = await query;
+      if (error) throw error;
+      setQuotes(data || []);
+    } catch (error) {
+      console.error(error);
+      toast.error('Error cargando cotizaciones');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDownload = async (quote: QuoteWithClient) => {
-     // ... (Misma lógica de descarga con QR que ya tienes) ...
-     // Asegúrate de usar la lógica de QR actualizada aquí también si quieres consistencia
      setDownloadingId(quote.id);
      try {
        const baseUrl = window.location.origin;
-      const docsUrl = `${baseUrl}/quote/docs?folio=${encodeURIComponent(quote.folio)}`;
-       const qrDataUrl = await QRCode.toDataURL(docsUrl, { width: 200, margin: 2 });       
-       const success = generateQuotePDF(quote, quote.client, qrDataUrl);
+       const docsUrl = `${baseUrl}/quote/docs?folio=${encodeURIComponent(quote.folio)}`;
+       const qrDataUrl = await QRCode.toDataURL(docsUrl, { width: 200, margin: 2 });
        
+       const success = generateQuotePDF(quote, quote.client, qrDataUrl);
        if(success) toast.success("Descargado correctamente");
      } catch (e) {
        console.error(e);
-       generateQuotePDF(quote, quote.client); // Fallback sin QR
+       generateQuotePDF(quote, quote.client);
      } finally {
        setDownloadingId(null);
      }
   };
 
-  // ... (Resto de filtros) ...
+  // --- NUEVA LÓGICA: CAMBIO DE ESTADO ---
+  const handleStatusChange = async (quoteId: string, newStatus: string) => {
+    setUpdatingId(quoteId);
+    try {
+      const success = await quoteService.updateStatus(quoteId, newStatus);
+      if (success) {
+        toast.success(`Estado actualizado a ${newStatus}`);
+        // Actualizamos la lista localmente para reflejar el cambio inmediato en UI
+        setQuotes(prev => prev.map(q => q.id === quoteId ? { ...q, estado: newStatus } : q));
+        // Opcional: Si quieres forzar recarga completa para actualizar gráficos globales
+        // fetchQuotes(); 
+      } else {
+        toast.error("No se pudo actualizar el estado");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Error de conexión");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  // Helper para mantener tus estilos originales
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'Aceptada': return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+      case 'Facturada': return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+      case 'Rechazada': return 'bg-red-500/10 text-red-400 border-red-500/20';
+      default: return 'bg-amber-500/10 text-amber-400 border-amber-500/20'; // Pendiente
+    }
+  };
+
   const filteredQuotes = quotes.filter(q => {
       const searchLower = searchTerm.toLowerCase();
       const folio = (q.folio || '').toLowerCase();
@@ -98,7 +126,7 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
 
   return (
     <div className="space-y-4">
-       {/* ... (Barra de Filtros Igual) ... */}
+       {/* FILTROS */}
        <div className="flex flex-col md:flex-row gap-4 bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
@@ -136,18 +164,35 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
                    <div>
                       <div className="flex items-center gap-2">
                          <h4 className="text-white font-bold text-sm">{quote.folio || 'S/F'}</h4>
-                         {/* Badge de Versión */}
+                         
                          {(quote.version && quote.version > 1) && (
                             <span className="text-[10px] bg-cyan-900/50 text-cyan-400 px-1.5 py-0.5 rounded border border-cyan-500/20 font-mono">
                                v{quote.version}
                             </span>
                          )}
-                         <span className={`text-[10px] px-2 py-0.5 rounded-full border uppercase ${
-                            quote.estado === 'Pendiente' ? 'bg-amber-900/20 text-amber-400 border-amber-500/20' : 
-                            'bg-slate-800 text-slate-400 border-slate-700'
-                         }`}>
-                           {quote.estado}
-                         </span>
+
+                         {/* SELECTOR DE ESTADO CAMUFLADO */}
+                         <div className="relative group/status">
+                           <select
+                             value={quote.estado}
+                             disabled={updatingId === quote.id}
+                             onChange={(e) => handleStatusChange(quote.id, e.target.value)}
+                             className={`appearance-none cursor-pointer text-[10px] px-2 py-0.5 rounded-full border uppercase font-bold outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-slate-900 ${getStatusColor(quote.estado)} ${updatingId === quote.id ? 'opacity-50' : ''}`}
+                             style={{ textAlignLast: 'center' }} // Centrar texto en select
+                           >
+                             <option value="Pendiente" className="bg-slate-900 text-amber-400">Pendiente</option>
+                             <option value="Aceptada" className="bg-slate-900 text-emerald-400">Aceptada</option>
+                             <option value="Facturada" className="bg-slate-900 text-blue-400">Facturada</option>
+                             <option value="Rechazada" className="bg-slate-900 text-red-400">Rechazada</option>
+                           </select>
+                           {/* Spinner pequeño si está actualizando */}
+                           {updatingId === quote.id && (
+                             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                               <Loader2 className="w-3 h-3 animate-spin text-white" />
+                             </div>
+                           )}
+                         </div>
+
                       </div>
                       <p className="text-slate-500 text-xs flex items-center gap-2 mt-1">
                         <User className="w-3 h-3" /> {quote.client?.razon_social}
@@ -162,7 +207,6 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
                       <p className="text-cyan-400 font-mono font-bold">${(quote.total || quote.total_bruto).toLocaleString('es-CL')}</p>
                    </div>
                    
-                   {/* BOTÓN REVISIÓN / EDITAR */}
                    {onCreateRevision && (
                      <button
                        onClick={() => onCreateRevision(quote)}
@@ -173,7 +217,6 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
                      </button>
                    )}
 
-                   {/* BOTÓN DESCARGAR */}
                    <button 
                       onClick={() => handleDownload(quote)}
                       disabled={downloadingId === quote.id}
