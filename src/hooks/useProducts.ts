@@ -30,7 +30,7 @@ export function useProducts() {
     }
   }, []);
 
-  // Nueva función para eliminar con protección de historial
+  // Función de eliminar actualizada
   const deleteProduct = async (id: string) => {
     try {
       const { error: deleteError } = await supabase
@@ -39,10 +39,9 @@ export function useProducts() {
         .eq('id', id);
 
       if (deleteError) {
-        // Código Postgres 23503 = Violación de llave foránea (El producto está en uso)
         if (deleteError.code === '23503') {
           toast.error("No se puede eliminar este producto", {
-            description: "Este producto forma parte de cotizaciones históricas. Te recomendamos editarlo en su lugar.",
+            description: "Este producto forma parte de cotizaciones históricas. Te recomendamos editarlo.",
             duration: 5000,
           });
         } else {
@@ -51,9 +50,10 @@ export function useProducts() {
         return;
       }
 
-      // Si se eliminó correctamente en BD, actualizamos el estado local
-      setProducts(prev => prev.filter(p => p.id !== id));
       toast.success("Producto eliminado correctamente");
+      
+      // RECARGA COMPLETA: Volvemos a pedir los datos a la DB para asegurar sincronía
+      await fetchProducts(); 
 
     } catch (err: any) {
       console.error("Error eliminando:", err);
@@ -68,8 +68,8 @@ export function useProducts() {
   return { 
     products, 
     loading, 
-    error, // Exportamos el error
+    error,
     refreshProducts: fetchProducts,
-    deleteProduct // Exportamos la acción de eliminar
+    deleteProduct 
   };
 }
