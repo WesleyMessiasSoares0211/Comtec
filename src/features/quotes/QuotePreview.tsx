@@ -17,9 +17,17 @@ interface Props {
   notes?: string;
   terms?: string;
   validityDays?: number;
+  existingFolio?: string;
+  nextVersion?: number;
+  parentQuoteId?: string;
+  onSuccess?: () => void;
 }
 
-export default function QuotePreview({ client, items, totals, onClose, notes, terms, validityDays }: Props) {
+export default function QuotePreview({ 
+  client, items, totals, onClose, 
+  notes, terms, validityDays,
+  existingFolio, nextVersion, parentQuoteId, onSuccess 
+}: Props) {
   const [isSaving, setIsSaving] = useState(false);
 
   // Fecha y URL para la vista previa (visual)
@@ -41,18 +49,18 @@ export default function QuotePreview({ client, items, totals, onClose, notes, te
         total_bruto: totals.total,
         notes,
         terms,
-        validity_days: validityDays
+        validity_days: validityDays,
+        // Datos de versión (si aplican)
+        version: nextVersion,
+        folio: existingFolio,
+        parent_quote_id: parentQuoteId
       });
 
       // 2. Generar QR Real apuntando a la Carpeta Digital
-      // La URL apunta a la vista de documentos que creamos anteriormente
-     const docsUrl = `${baseUrl}/quote/docs?folio=${encodeURIComponent(quote.folio)}`;
-  
-  const qrDataUrl = await QRCode.toDataURL(docsUrl, {
-    width: 200,
-    margin: 1,
-    color: { dark: '#000000', light: '#ffffff' }
-  });
+      // CORRECCIÓN: Usamos savedQuote.folio en lugar de quote.folio
+      const docsUrl = `${baseUrl}/quote/docs?folio=${encodeURIComponent(savedQuote.folio)}`;
+      
+      let qrDataUrl = '';
       try {
         qrDataUrl = await QRCode.toDataURL(docsUrl, {
           width: 200,
@@ -68,7 +76,7 @@ export default function QuotePreview({ client, items, totals, onClose, notes, te
 
       // 3. Generar PDF
       const pdfSuccess = generateQuotePDF({
-        folio: savedQuote.folio, // Usamos el folio real (ej: COT-001/2026)
+        folio: savedQuote.folio, // Usamos el folio real retornado por la BBDD
         items,
         subtotal_neto: totals.subtotal,
         iva: totals.iva,
@@ -76,11 +84,13 @@ export default function QuotePreview({ client, items, totals, onClose, notes, te
         created_at: savedQuote.created_at,
         notes,
         terms,
-        validity_days: validityDays
-      }, client, qrDataUrl); // Pasamos la imagen del QR
+        validity_days: validityDays,
+        version: savedQuote.version
+      }, client, qrDataUrl); // Pasamos la imagen del QR generada
 
       if (pdfSuccess) {
         toast.success(`Cotización ${savedQuote.folio} emitida correctamente`);
+        if (onSuccess) onSuccess();
       } else {
         toast.warning(`Cotización ${savedQuote.folio} guardada, pero hubo un error generando el PDF`);
       }
