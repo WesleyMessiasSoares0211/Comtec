@@ -11,6 +11,7 @@ import { ConfirmUpdateModal } from '../../components/ui/SecurityModals';
 import type { Product, ProductFormData } from '../../types/product';
 import { ItemType } from '../../types/product';
 
+// Mantenemos tus constantes intactas
 const CATEGORY_MODELS_DATA = {
   'PIEZAS Y BOMBAS': ['material_base', 'diametro_succion', 'tipo_sello', 'fluido_compatible'],
   'FABRICACION MECANICA': ['material', 'tolerancia_mm', 'tratamiento_termico', 'nro_plano'],
@@ -44,6 +45,7 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
 
   const [formData, setFormData] = useState<ProductFormData>(emptyState);
 
+  // EFECTO DE CARGA INICIAL (Sin cambios estructurales)
   useEffect(() => {
     if (initialData) {
       const specs = initialData.specifications || initialData.metadata || {};
@@ -67,7 +69,8 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
         price: initialData.price || 0,
         image_url: initialData.image_url || '',
         datasheet_url: initialData.datasheet_url || '',
-        main_category: initialData.main_category || '',
+        // MODIFICACIÓN: Aseguramos leer main_category o category por compatibilidad
+        main_category: initialData.main_category || initialData.category || '',
         subcategory: initialData.subcategory || '',
         featured: Boolean(initialData.featured),
         ej_uso: descriptionText,
@@ -81,6 +84,7 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
 
   const isIotOrGateway = ['Sensor', 'Gateway'].includes(formData.main_category);
 
+  // MANEJO DE ARCHIVOS (Sin cambios)
   const handleFileChange = async (file: File, type: 'img' | 'doc') => {
     setUploading(prev => ({ ...prev, [type]: true }));
     const toastId = toast.loading(`Subiendo ${type === 'img' ? 'imagen' : 'documento'}...`);
@@ -120,9 +124,13 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
     const toastId = toast.loading(initialData ? 'Actualizando ficha...' : 'Registrando en catálogo...');
 
     try {
+      // PREPARACIÓN DEL PAYLOAD (MODIFICADO PARA COMPATIBILIDAD DB)
       const finalPayload = {
         ...formData,
         price: Number(formData.price),
+        // Si tu DB usa 'category' además de 'main_category', guardamos en ambos para evitar conflictos
+        category: formData.main_category, 
+        main_category: formData.main_category,
         ej_uso: showUseCase ? [{ title: useCaseTitle, industry: useCaseIndustry, description: formData.ej_uso }] : []
       };
 
@@ -135,12 +143,14 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
       }
       onSuccess?.();
     } catch (err: any) {
+      console.error(err);
       toast.error('Error al procesar: ' + (err.message || 'Error de conexión'), { id: toastId });
     } finally {
       setLoading(false);
     }
   };
 
+  // LAYOUT VISUAL INTACTO
   return (
     <>
       <form onSubmit={handleInitialSubmit} className="bg-slate-900/50 border border-slate-800 p-8 rounded-2xl space-y-8 shadow-2xl animate-in fade-in zoom-in duration-500">
@@ -164,7 +174,7 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
           <div className="space-y-6">
             <SectionHeader icon={<ImageIcon className="w-4 h-4" />} title="Multimedia y Clasificación" color="text-cyan-400" />
             <div className="grid grid-cols-2 gap-4">
-              <UploadBox label="Imagen" type="image/*" loading={uploading.img} preview={formData.image_url} onUpload={(f: File) => handleFileChange(f, 'img')} />
+              <UploadBox label="Imagen" type="image/*" loading={uploading.img} preview={formData.image_url} onUpload={(f: File) => handleFileChange(f, 'img')} hasValue={!!formData.image_url} />
               <UploadBox label="DataSheet" type=".pdf" loading={uploading.doc} hasValue={!!formData.datasheet_url} onUpload={(f: File) => handleFileChange(f, 'doc')} />
             </div>
             <div className="space-y-4">
@@ -269,6 +279,7 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
   );
 }
 
+// Subcomponentes (Mantenidos igual para preservar el layout)
 function SectionHeader({ icon, title, color }: { icon: React.ReactNode, title: string, color: string }) {
   return (
     <div className="flex items-center gap-3 border-b border-slate-800 pb-3">

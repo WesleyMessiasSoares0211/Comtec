@@ -16,11 +16,12 @@ export interface QuotePayload {
 }
 
 export const quoteService = {
+  // 1. CREAR COTIZACIÓN (Nueva o Revisión)
   async create(payload: QuotePayload) {
     try {
       let folioToUse = payload.folio;
 
-      // 1. Si NO traemos folio (es nueva), generamos uno nuevo automático
+      // A. Si NO traemos folio (es nueva), generamos uno nuevo automático
       if (!folioToUse) {
         const { data: newFolio, error: folioError } = await supabase
           .rpc('get_next_quote_folio');
@@ -28,7 +29,7 @@ export const quoteService = {
         folioToUse = newFolio;
       }
 
-      // 2. Insertar Cotización (Sea nueva o revisión)
+      // B. Insertar Cotización
       const { data, error } = await supabase
         .from('crm_quotes')
         .insert([{
@@ -54,6 +55,22 @@ export const quoteService = {
     } catch (error) {
       console.error("Error creating quote:", error);
       throw error;
+    }
+  }, // <--- ESTA COMA ES VITAL PARA SEPARAR LAS FUNCIONES
+
+  // 2. ACTUALIZAR ESTADO (Pendiente -> Aceptada/Facturada/Rechazada)
+  async updateStatus(id: string, status: string) {
+    try {
+      const { error } = await supabase
+        .from('crm_quotes')
+        .update({ estado: status })
+        .eq('id', id);
+
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Error updating status:', error);
+      return false;
     }
   }
 };
