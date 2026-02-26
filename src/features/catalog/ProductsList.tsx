@@ -16,7 +16,8 @@ export default function ProductsList({ onEditProduct }: Props) {
   // Usamos nuestro "Cerebro" (Hook) para obtener todo lo necesario
   const {
     products, 
-    stats, 
+    stats,
+    availableCategories,
     loading, 
     error,
     
@@ -78,6 +79,7 @@ export default function ProductsList({ onEditProduct }: Props) {
         onCategoryChange={setCategoryFilter}
         showLowStockOnly={showLowStockOnly}
         onToggleLowStock={() => setShowLowStockOnly(!showLowStockOnly)}
+        availableCategories={availableCategories}
       />
 
       {/* 3. TABLA DE DATOS */}
