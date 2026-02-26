@@ -8,6 +8,7 @@ interface Props {
   onCategoryChange: (value: string) => void;
   showLowStockOnly: boolean;
   onToggleLowStock: () => void;
+  availableCategories: string[]; // <--- NUEVA PROP
 }
 
 export default function ProductFilters({
@@ -16,21 +17,12 @@ export default function ProductFilters({
   categoryFilter,
   onCategoryChange,
   showLowStockOnly,
-  onToggleLowStock
+  onToggleLowStock,
+  availableCategories // <--- Usamos esto
 }: Props) {
-  
-  // Lista de categorías estándar del sistema
-  const categories = [
-    'Sensores', 
-    'PLCs', 
-    'HMI', 
-    'VFD', 
-    'Motores', 
-    'Cables', 
-    'Conectividad', 
-    'Industrial',
-    'Otros'
-  ];
+
+  // YA NO NECESITAMOS LA LISTA HARDCODED
+  // const categories = ['Sensores', 'PLCs', ...]; <--- ELIMINADO
 
   return (
     <div className="flex flex-col md:flex-row gap-4 bg-slate-900/50 p-4 rounded-2xl border border-slate-800 mb-6">
@@ -56,20 +48,21 @@ export default function ProductFilters({
       </div>
 
       <div className="flex gap-4">
-        {/* 2. SELECTOR DE CATEGORÍA */}
-        <div className="relative min-w-[180px]">
+        {/* 2. SELECTOR DE CATEGORÍA DINÁMICO */}
+        <div className="relative min-w-[200px]">
           <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <select 
-            className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 pl-10 pr-8 text-sm text-white focus:ring-1 focus:ring-cyan-500 outline-none appearance-none cursor-pointer"
+            className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 pl-10 pr-8 text-sm text-white focus:ring-1 focus:ring-cyan-500 outline-none appearance-none cursor-pointer capitalize"
             value={categoryFilter}
             onChange={(e) => onCategoryChange(e.target.value)}
           >
             <option value="todos">Todas las Categorías</option>
-            {categories.map(cat => (
+            {/* Mapeamos las categorías que existen en la BBDD */}
+            {availableCategories.map(cat => (
               <option key={cat} value={cat}>{cat}</option>
             ))}
           </select>
-          {/* Triángulo del select personalizado */}
+          {/* Triángulo del select */}
           <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none border-l-4 border-l-transparent border-r-4 border-r-transparent border-t-4 border-t-slate-500"></div>
         </div>
 
@@ -83,7 +76,8 @@ export default function ProductFilters({
           }`}
         >
           <AlertTriangle className="w-4 h-4" />
-          {showLowStockOnly ? 'Viendo Críticos' : 'Ver Críticos'}
+          <span className="hidden md:inline">{showLowStockOnly ? 'Viendo Críticos' : 'Ver Críticos'}</span>
+          <span className="md:hidden">Stock</span>
         </button>
       </div>
     </div>
