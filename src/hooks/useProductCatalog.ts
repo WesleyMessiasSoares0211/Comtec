@@ -1,19 +1,20 @@
-import { useState, useMemo } from 'react';
-import { useProducts } from './useProducts';
+import { useState, useMemo, useEffect } from 'react';
+import { useProducts } from './useProducts'; // Importamos el hook base existente
 import { Product } from '../types/product';
 
 const ITEMS_PER_PAGE = 10;
 
 export function useProductCatalog() {
+  // Obtenemos los datos crudos del hook base
   const { products, loading, error, refreshProducts, deleteProduct } = useProducts();
 
-  // Estados de UI
+  // Estados de UI para el Catálogo
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('todos');
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
-  // 1. CÁLCULOS DE ESTADÍSTICAS (Memorizados para rendimiento)
+  // 1. CÁLCULOS DE ESTADÍSTICAS (Memorizados para no recalcular en cada render)
   const stats = useMemo(() => {
     if (!products) return { totalSku: 0, totalValue: 0, criticalStock: 0 };
 
@@ -30,7 +31,7 @@ export function useProductCatalog() {
     }, { totalSku: 0, totalValue: 0, criticalStock: 0 });
   }, [products]);
 
-  // 2. FILTRADO DE DATOS
+  // 2. FILTRADO DE DATOS (Búsqueda + Categoría + Stock)
   const filteredProducts = useMemo(() => {
     if (!products) return [];
 
@@ -60,8 +61,8 @@ export function useProductCatalog() {
 
   const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE);
 
-  // Resetear página si cambian los filtros
-  useMemo(() => {
+  // Resetear a página 1 si cambian los filtros
+  useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, categoryFilter, showLowStockOnly]);
 
