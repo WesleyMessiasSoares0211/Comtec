@@ -1,30 +1,16 @@
 import React from 'react';
 import { Edit, Trash2, Image, AlertTriangle, Layers, FileText } from 'lucide-react';
 import { Product } from '../../types/product';
-import { toast } from 'sonner'; // Importar toast
 
 interface Props {
   products: Product[];
   onEdit: (product: Product) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => void; // Esta función abre el modal del padre
 }
 
 export default function ProductTable({ products, onEdit, onDelete }: Props) {
   
-  // MODIFICADO: Confirmación estilo Toast
-  const handleDeleteClick = (id: string) => {
-    toast("¿Estás seguro de eliminar este producto?", {
-      description: "Esta acción es irreversible.",
-      action: {
-        label: "Eliminar",
-        onClick: () => onDelete(id), // Ejecuta la función si hace clic
-      },
-      cancel: {
-        label: "Cancelar",
-      },
-      duration: 5000, // Da tiempo para decidir
-    });
-  };
+  // ELIMINADO: const handleDeleteClick... (Causante de la doble alerta)
 
   if (products.length === 0) {
     return (
@@ -81,7 +67,7 @@ export default function ProductTable({ products, onEdit, onDelete }: Props) {
                         {product.part_number}
                       </span>
                       <span className="text-xs text-slate-500 flex items-center gap-1">
-                        <Layers className="w-3 h-3" /> {product.category}
+                        <Layers className="w-3 h-3" /> {product.category || product.main_category}
                       </span>
                     </div>
                   </td>
@@ -129,8 +115,10 @@ export default function ProductTable({ products, onEdit, onDelete }: Props) {
                       >
                         <Edit className="w-4 h-4" />
                       </button>
+                      
+                      {/* CORRECCIÓN CRÍTICA: Llamada directa a onDelete sin window.confirm */}
                       <button 
-                        onClick={() => handleDeleteClick(product.id)}
+                        onClick={() => onDelete(product.id)}
                         className="p-2 hover:bg-red-500/10 text-slate-500 hover:text-red-400 rounded-lg transition-colors"
                         title="Eliminar"
                       >
