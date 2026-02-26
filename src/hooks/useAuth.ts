@@ -1,136 +1,75 @@
-import { useState, useEffect } from 'react';
-import { Session } from '@supabase/supabase-js';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { Product } from '../types/product';
+import { toast } from 'sonner';
 
-export type UserRole = 'super_admin' | 'admin' | 'vendedor' | 'tecnico' | null;
-
-export interface UserProfile {
-  id: string;
-  email: string;
-  role: UserRole;
-}
-
-interface UseAuthReturn {
-  session: Session | null;
-  profile: UserProfile | null;
-  role: UserRole;
-  loading: boolean;
-  error: string | null;
-  isAuthenticated: boolean;
-  isSuperAdmin: boolean;
-  isAdmin: boolean;
-  isVendedor: boolean;
-  isTecnico: boolean;
-  canDelete: boolean;
-  canEdit: boolean;
-  canCreate: boolean;
-}
-
-export function useAuth(): UseAuthReturn {
-  const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+export function useProducts() {
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchProfile = async (userId: string, retries = 3): Promise<void> => {
+  const fetchProducts = useCallback(async () => {
     try {
-      const { data, error: profileError } = await supabase
-        .from('profiles')
-        .select('id, email, role')
-        .eq('id', userId)
-        .maybeSingle();
+      setLoading(true);
+      setError(null);
+      
+      const { data, error: dbError } = await supabase
+        .from('products')
+        .select('*')
+        .order('name', { ascending: true });
 
-      if (profileError) {
-        throw profileError;
-      }
+      if (dbError) throw dbError;
 
-      if (data) {
-        setProfile(data as UserProfile);
-        setError(null);
-      } else {
-        // Si no hay perfil y tenemos reintentos disponibles, esperar y reintentar
-        if (retries > 0) {
-          console.log(`Perfil no encontrado, reintentando... (${retries} intentos restantes)`);
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          return fetchProfile(userId, retries - 1);
+      setProducts(data || []);
+    } catch (err: any) {
+      console.error('Error cargando productos:', err);
+      setError(err.message || 'Error desconocido');
+      toast.error('No se pudo cargar el catálogo de productos');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Función de eliminar actualizada
+  const deleteProduct = async (id: string) => {
+    try {
+      const { error: deleteError } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', id);
+
+      if (deleteError) {
+        if (deleteError.code === '23503') {
+          toast.error("No se puede eliminar este producto", {
+            description: "Este producto forma parte de cotizaciones históricas. Te recomendamos editarlo.",
+            duration: 5000,
+          });
+        } else {
+          throw deleteError;
         }
-
-        // Si no hay reintentos disponibles, establecer error
-        console.warn('Perfil no encontrado después de varios intentos');
-        setProfile(null);
-        setError('Perfil no encontrado. Intente cerrar sesión y volver a iniciar.');
+        return;
       }
-    } catch (err) {
-      console.error('Error fetching profile:', err);
-      setError(err instanceof Error ? err.message : 'Error al cargar perfil');
-      setProfile(null);
+
+      toast.success("Producto eliminado correctamente");
+      
+      // RECARGA COMPLETA: Volvemos a pedir los datos a la DB para asegurar sincronía
+      await fetchProducts(); 
+
+    } catch (err: any) {
+      console.error("Error eliminando:", err);
+      toast.error("Error al eliminar", { description: err.message });
     }
   };
 
   useEffect(() => {
-    const initAuth = async () => {
-      try {
-        setLoading(true);
+    fetchProducts();
+  }, [fetchProducts]);
 
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
-        setSession(currentSession);
-
-        if (currentSession?.user) {
-          await fetchProfile(currentSession.user.id);
-        }
-      } catch (err) {
-        console.error('Error initializing auth:', err);
-        setError('Error al inicializar autenticación');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    initAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, newSession) => {
-        (async () => {
-          setSession(newSession);
-
-          if (newSession?.user) {
-            await fetchProfile(newSession.user.id);
-          } else {
-            setProfile(null);
-          }
-        })();
-      }
-    );
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  const role = profile?.role || null;
-  const isAuthenticated = !!session;
-  const isSuperAdmin = role === 'super_admin';
-  const isAdmin = role === 'admin';
-  const isVendedor = role === 'vendedor';
-  const isTecnico = role === 'tecnico';
-
-  const canDelete = isSuperAdmin || isAdmin;
-  const canEdit = isSuperAdmin || isAdmin || isVendedor;
-  const canCreate = isSuperAdmin || isAdmin || isVendedor;
-
-  return {
-    session,
-    profile,
-    role,
-    loading,
+  return { 
+    products, 
+    loading, 
     error,
-    isAuthenticated,
-    isSuperAdmin,
-    isAdmin,
-    isVendedor,
-    isTecnico,
-    canDelete,
-    canEdit,
-    canCreate,
+    refreshProducts: fetchProducts,
+    deleteProduct 
   };
 }
