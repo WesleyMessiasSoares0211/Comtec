@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { 
   FileText, Calendar, User, Search, 
   AlertCircle, Loader2, Download, CopyPlus,
-  ChevronLeft, ChevronRight // Iconos para paginación
+  ChevronLeft, ChevronDown, ChevronRight // Iconos para paginación
 } from 'lucide-react';
 import { Client } from '../../types/client';
 import { toast } from 'sonner';
@@ -201,33 +201,35 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
                            )}
 
                            {/* SELECTOR DE ESTADO */}
-                           <div className="relative group/status">
-                             <select
-                               value={quote.estado}
-                               disabled={updatingId === quote.id}
-                               onChange={(e) => handleStatusChange(quote.id, e.target.value)}
-                               className={`appearance-none cursor-pointer text-[10px] px-2 py-0.5 rounded-full border uppercase font-bold outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-slate-900 ${getStatusColor(quote.estado)} ${updatingId === quote.id ? 'opacity-50' : ''}`}
-                               style={{ textAlignLast: 'center' }}
-                             >
-                               <option value="Pendiente" className="bg-slate-900 text-amber-400">Pendiente</option>
-                               <option value="Aceptada" className="bg-slate-900 text-emerald-400">Aceptada</option>
-                               <option value="Facturada" className="bg-slate-900 text-blue-400">Facturada</option>
-                               <option value="Rechazada" className="bg-slate-900 text-red-400">Rechazada</option>
-                             </select>
-                             {updatingId === quote.id && (
-                               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                 <Loader2 className="w-3 h-3 animate-spin text-white" />
-                               </div>
-                             )}
-                           </div>
-                        </div>
-                        <p className="text-slate-500 text-xs flex items-center gap-2 mt-1">
-                          <User className="w-3 h-3" /> {quote.client?.razon_social}
-                          <span className="text-slate-700">|</span>
-                          <Calendar className="w-3 h-3" /> {new Date(quote.created_at).toLocaleDateString('es-CL')}
-                        </p>
-                     </div>
-                  </div>
+                           <div className="relative group/status inline-block">
+                              <select
+                                value={quote.estado}
+                                disabled={updatingId === quote.id}
+                                onChange={(e) => handleStatusChange(quote.id, e.target.value)}
+                                // CAMBIO: Cambiamos 'px-2' por 'pl-2 pr-6' para dejar espacio al icono
+                                className={`appearance-none cursor-pointer text-[10px] pl-2 pr-6 py-0.5 rounded-full border uppercase font-bold outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-slate-900 ${getStatusColor(quote.estado)} ${updatingId === quote.id ? 'opacity-50' : ''}`}
+                                style={{ textAlignLast: 'center' }}
+                              >
+                                <option value="Pendiente" className="bg-slate-900 text-amber-400">Pendiente</option>
+                                <option value="Aceptada" className="bg-slate-900 text-emerald-400">Aceptada</option>
+                                <option value="Facturada" className="bg-slate-900 text-blue-400">Facturada</option>
+                                <option value="Rechazada" className="bg-slate-900 text-red-400">Rechazada</option>
+                              </select>
+                            
+                              {/* ICONO CHEVRON (Solo visible si no está cargando) */}
+                              {updatingId !== quote.id && (
+                                <div className="absolute inset-y-0 right-1.5 flex items-center pointer-events-none">
+                                  <ChevronDown className="w-3 h-3 opacity-60" />
+                                </div>
+                              )}
+                            
+                              {/* LOADER (Visible al actualizar) */}
+                              {updatingId === quote.id && (
+                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                  <Loader2 className="w-3 h-3 animate-spin text-white" />
+                                </div>
+                              )}
+                            </div>
 
                   <div className="flex items-center gap-3 justify-end">
                      <div className="text-right hidden sm:block mr-2">
