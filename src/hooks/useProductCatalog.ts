@@ -7,6 +7,14 @@ const ITEMS_PER_PAGE = 10;
 export function useProductCatalog() {
   // Obtenemos los datos crudos del hook base
   const { products, loading, error, refreshProducts, deleteProduct } = useProducts();
+  const availableCategories = useMemo(() => {
+    if (!products) return [];
+    // 1. Mapeamos solo las categorías
+    // 2. Usamos Set para eliminar duplicados
+    // 3. Convertimos de nuevo a Array y ordenamos alfabéticamente
+    const uniqueCategories = Array.from(new Set(products.map(p => p.category).filter(Boolean)));
+    return uniqueCategories.sort();
+  }, [products]);
 
   // Estados de UI para el Catálogo
   const [searchTerm, setSearchTerm] = useState('');
@@ -70,6 +78,7 @@ export function useProductCatalog() {
     // Datos procesados
     products: paginatedProducts,
     allProductsCount: filteredProducts.length,
+    availableCategories,
     stats,
     loading,
     error,
