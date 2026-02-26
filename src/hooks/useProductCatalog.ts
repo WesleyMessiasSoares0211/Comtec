@@ -1,103 +1,75 @@
-import { useState, useMemo, useEffect } from 'react';
-import { useProducts } from './useProducts';
-// No necesitamos importar Product explícitamente si usamos inferencia, 
-// pero lo mantenemos por buenas prácticas.
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '../lib/supabase';
+import { Product } from '../types/product';
+import { toast } from 'sonner';
 
-const ITEMS_PER_PAGE = 10;
+export function useProducts() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-export function useProductCatalog() {
-  const { products, loading, error, refreshProducts, deleteProduct } = useProducts();
+  const fetchProducts = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const { data, error: dbError } = await supabase
+        .from('products')
+        .select('*')
+        .order('name', { ascending: true });
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('todos');
-  const [showLowStockOnly, setShowLowStockOnly] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
+      if (dbError) throw dbError;
 
-  // Helper para obtener la categoría de forma segura (soporta main_category o category)
-  const getCategory = (p: any): string => {
-    // Intenta leer 'main_category', si no existe, usa 'category', si no, string vacío
-    return p.main_category || p.category || '';
+      setProducts(data || []);
+    } catch (err: any) {
+      console.error('Error cargando productos:', err);
+      setError(err.message || 'Error desconocido');
+      toast.error('No se pudo cargar el catálogo de productos');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Nueva función para eliminar con protección de historial
+  const deleteProduct = async (id: string) => {
+    try {
+      const { error: deleteError } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', id);
+
+      if (deleteError) {
+        // Código Postgres 23503 = Violación de llave foránea (El producto está en uso)
+        if (deleteError.code === '23503') {
+          toast.error("No se puede eliminar este producto", {
+            description: "Este producto forma parte de cotizaciones históricas. Te recomendamos editarlo en su lugar.",
+            duration: 5000,
+          });
+        } else {
+          throw deleteError;
+        }
+        return;
+      }
+
+      // Si se eliminó correctamente en BD, actualizamos el estado local
+      setProducts(prev => prev.filter(p => p.id !== id));
+      toast.success("Producto eliminado correctamente");
+
+    } catch (err: any) {
+      console.error("Error eliminando:", err);
+      toast.error("Error al eliminar", { description: err.message });
+    }
   };
 
-  // 1. CÁLCULOS DE ESTADÍSTICAS
-  const stats = useMemo(() => {
-    if (!products) return { totalSku: 0, totalValue: 0, criticalStock: 0 };
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
 
-    return products.reduce((acc, product) => {
-      const price = product.price || 0;
-      const stock = product.stock || 0;
-      const minStock = product.min_stock || 0;
-
-      acc.totalSku++;
-      acc.totalValue += price * stock;
-      if (stock <= minStock) acc.criticalStock++;
-      return acc;
-    }, { totalSku: 0, totalValue: 0, criticalStock: 0 });
-  }, [products]);
-
-  // 2. EXTRAER CATEGORÍAS (CORREGIDO PARA DETECTAR main_category)
-  const availableCategories = useMemo(() => {
-    if (!products || products.length === 0) return [];
-    
-    const unique = new Set(
-      products
-        .map(p => getCategory(p)) // Usamos el helper para obtener el valor correcto
-        .filter(c => c && c.trim() !== '') // Filtramos vacíos
-    );
-    return Array.from(unique).sort();
-  }, [products]);
-
-  // 3. FILTRADO
-  const filteredProducts = useMemo(() => {
-    if (!products) return [];
-
-    return products.filter(product => {
-      // Filtro de Texto
-      const searchLower = searchTerm.toLowerCase();
-      const matchesSearch = 
-        (product.name || '').toLowerCase().includes(searchLower) ||
-        (product.part_number || '').toLowerCase().includes(searchLower) ||
-        (product.brand || '').toLowerCase().includes(searchLower);
-
-      // Filtro de Categoría (CORREGIDO)
-      const prodCat = getCategory(product); // Usamos el mismo helper
-      const matchesCategory = categoryFilter === 'todos' || prodCat === categoryFilter;
-
-      // Filtro de Stock
-      const matchesStock = !showLowStockOnly || (product.stock || 0) <= (product.min_stock || 0);
-
-      return matchesSearch && matchesCategory && matchesStock;
-    });
-  }, [products, searchTerm, categoryFilter, showLowStockOnly]);
-
-  // 4. PAGINACIÓN
-  const paginatedProducts = useMemo(() => {
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredProducts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  }, [filteredProducts, currentPage]);
-
-  const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE);
-
-  useEffect(() => { setCurrentPage(1); }, [searchTerm, categoryFilter, showLowStockOnly]);
-
-  return {
-    products: paginatedProducts,
-    allProductsCount: filteredProducts.length,
-    availableCategories,
-    stats,
-    loading,
-    error,
-    currentPage,
-    totalPages,
-    setCurrentPage,
-    ITEMS_PER_PAGE,
-    searchTerm,
-    setSearchTerm,
-    categoryFilter,
-    setCategoryFilter,
-    showLowStockOnly,
-    setShowLowStockOnly,
-    refreshProducts,
-    deleteProduct
+  return { 
+    products, 
+    loading, 
+    error, // Exportamos el error
+    refreshProducts: fetchProducts,
+    deleteProduct // Exportamos la acción de eliminar
   };
 }
