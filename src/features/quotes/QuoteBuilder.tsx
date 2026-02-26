@@ -10,8 +10,8 @@ import QuotePreview from './QuotePreview';
 import { Client } from '../../types/client';
 
 interface Props {
-  initialData?: any | null; // Datos para cargar en modo revisión
-  onSuccess?: () => void;   // Para limpiar el estado padre al terminar
+  initialData?: any | null; 
+  onSuccess?: () => void;   
 }
 
 export default function QuoteBuilder({ initialData, onSuccess }: Props) {
@@ -39,9 +39,12 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
 
   // EFECTO: Cargar datos si vienen en initialData (Modo Revisión)
   useEffect(() => {
-    if (initialData) {
+    // CORRECCIÓN: Validamos que initialData tenga un folio antes de activar el modo revisión
+    if (initialData && initialData.folio) {
+      console.log("Activando modo revisión para:", initialData.folio); // Debug
+      
       setIsRevisionMode(true);
-      setSelectedClientId(initialData.client_id);
+      setSelectedClientId(initialData.client_id || '');
       setItems(initialData.items || []);
       setNotes(initialData.notes || '');
       setTerms(initialData.terms || '');
@@ -52,7 +55,7 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
       setNextVersion((initialData.version || 1) + 1);
       setParentQuoteId(initialData.id);
       
-      toast.info(`Cargando datos para revisión de ${initialData.folio}`);
+      toast.info(`Editando Revisión para ${initialData.folio} (v${(initialData.version || 1) + 1})`);
     } else {
       // Resetear si no hay datos (Modo Nuevo)
       setIsRevisionMode(false);
@@ -138,8 +141,8 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
           <div className="flex items-center gap-2">
             <AlertCircle className="w-5 h-5" />
             <div>
-              <p className="text-sm font-bold">Modo Edición: Creando Revisión {nextVersion}</p>
-              <p className="text-xs text-amber-500/70">Original: {parentFolio}</p>
+              <p className="text-sm font-bold">Modo Edición: Generando {parentFolio} (Rev. {nextVersion})</p>
+              <p className="text-xs text-amber-500/70">Se mantendrá el folio original.</p>
             </div>
           </div>
           <button 
@@ -346,8 +349,8 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
           notes={notes}
           terms={terms}
           validityDays={validityDays}
-          // Props para la revisión (si aplica)
-          existingFolio={isRevisionMode ? parentFolio : undefined} // Ojo: QuotePreview debe aceptar esta prop
+          // CRÍTICO: Si no está en modo revisión, pasamos undefined para que genere folio nuevo
+          existingFolio={isRevisionMode ? parentFolio : undefined} 
           nextVersion={nextVersion}
           parentQuoteId={parentQuoteId}
           onSuccess={onSuccess}
