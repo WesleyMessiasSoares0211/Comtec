@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useProducts } from './useProducts';
-import { Product } from '../types/product';
+// No necesitamos importar Product explícitamente si usamos inferencia, 
+// pero lo mantenemos por buenas prácticas.
 
 const ITEMS_PER_PAGE = 10;
 
@@ -12,9 +13,14 @@ export function useProductCatalog() {
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Helper para obtener la categoría de forma segura (soporta main_category o category)
+  const getCategory = (p: any): string => {
+    // Intenta leer 'main_category', si no existe, usa 'category', si no, string vacío
+    return p.main_category || p.category || '';
+  };
+
   // 1. CÁLCULOS DE ESTADÍSTICAS
   const stats = useMemo(() => {
-    // Protección: Si products es null/undefined, devolvemos ceros
     if (!products) return { totalSku: 0, totalValue: 0, criticalStock: 0 };
 
     return products.reduce((acc, product) => {
@@ -29,15 +35,14 @@ export function useProductCatalog() {
     }, { totalSku: 0, totalValue: 0, criticalStock: 0 });
   }, [products]);
 
-  // 2. EXTRAER CATEGORÍAS (NUEVO y BLINDADO)
+  // 2. EXTRAER CATEGORÍAS (CORREGIDO PARA DETECTAR main_category)
   const availableCategories = useMemo(() => {
     if (!products || products.length === 0) return [];
     
-    // Obtenemos categorías únicas no vacías
     const unique = new Set(
       products
-        .map(p => p.category)
-        .filter(c => c && typeof c === 'string' && c.trim() !== '')
+        .map(p => getCategory(p)) // Usamos el helper para obtener el valor correcto
+        .filter(c => c && c.trim() !== '') // Filtramos vacíos
     );
     return Array.from(unique).sort();
   }, [products]);
@@ -47,13 +52,18 @@ export function useProductCatalog() {
     if (!products) return [];
 
     return products.filter(product => {
+      // Filtro de Texto
       const searchLower = searchTerm.toLowerCase();
       const matchesSearch = 
         (product.name || '').toLowerCase().includes(searchLower) ||
         (product.part_number || '').toLowerCase().includes(searchLower) ||
         (product.brand || '').toLowerCase().includes(searchLower);
 
-      const matchesCategory = categoryFilter === 'todos' || product.category === categoryFilter;
+      // Filtro de Categoría (CORREGIDO)
+      const prodCat = getCategory(product); // Usamos el mismo helper
+      const matchesCategory = categoryFilter === 'todos' || prodCat === categoryFilter;
+
+      // Filtro de Stock
       const matchesStock = !showLowStockOnly || (product.stock || 0) <= (product.min_stock || 0);
 
       return matchesSearch && matchesCategory && matchesStock;
@@ -73,7 +83,7 @@ export function useProductCatalog() {
   return {
     products: paginatedProducts,
     allProductsCount: filteredProducts.length,
-    availableCategories, // <--- Importante: Esto se envía a la vista
+    availableCategories,
     stats,
     loading,
     error,
