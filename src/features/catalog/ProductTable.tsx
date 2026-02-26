@@ -1,6 +1,7 @@
 import React from 'react';
 import { Edit, Trash2, Image, AlertTriangle, Layers, FileText } from 'lucide-react';
 import { Product } from '../../types/product';
+import { toast } from 'sonner'; // Importar toast
 
 interface Props {
   products: Product[];
@@ -10,10 +11,19 @@ interface Props {
 
 export default function ProductTable({ products, onEdit, onDelete }: Props) {
   
+  // MODIFICADO: Confirmación estilo Toast
   const handleDeleteClick = (id: string) => {
-    if (window.confirm('¿Estás seguro de que deseas eliminar este producto? Esta acción no se puede deshacer.')) {
-      onDelete(id);
-    }
+    toast("¿Estás seguro de eliminar este producto?", {
+      description: "Esta acción es irreversible.",
+      action: {
+        label: "Eliminar",
+        onClick: () => onDelete(id), // Ejecuta la función si hace clic
+      },
+      cancel: {
+        label: "Cancelar",
+      },
+      duration: 5000, // Da tiempo para decidir
+    });
   };
 
   if (products.length === 0) {
