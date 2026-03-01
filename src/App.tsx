@@ -21,18 +21,15 @@ const Login = lazy(() => import('./pages/Login'));
 const CommercialAdmin = lazy(() => import('./pages/CommercialAdmin'));
 const SystemConfig = lazy(() => import('./pages/SystemConfig'));
 const VerifyQuote = lazy(() => import('./pages/VerifyQuote'));
-const QuoteDocsViewer = lazy(() => import('./pages/QuoteDocsViewer')); // Importación Lazy
+const QuoteDocsViewer = lazy(() => import('./pages/QuoteDocsViewer'));
 
 // --- WRAPPERS INTERNOS ---
-
-// Wrapper para pasar parámetros de búsqueda al catálogo
 function CatalogWrapper() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   return <CatalogPage onNavigate={(p, e) => handleGlobalNavigate(navigate, p, e)} initialCategory={searchParams.get('category') || ''} />;
 }
 
-// Wrapper para Detalles de Producto
 function ProductWrapper() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -40,13 +37,19 @@ function ProductWrapper() {
   return <ProductDetailPage productId={id} onNavigate={(p) => handleGlobalNavigate(navigate, p)} />;
 }
 
-// Wrapper para capturar el folio en la verificación
 function VerifyWrapper() {
   const { folio } = useParams<{ folio: string }>();
   return <VerifyQuote folio={folio} />; 
 }
 
-// Layout Público (Con Header y Footer)
+// NUEVO: Wrapper para recordar la ruta desde donde se envió al usuario al Login
+function LoginWrapper() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const from = location.state?.from || '/admin';
+  return <Login onLoginSuccess={() => navigate(from, { replace: true })} />;
+}
+
 function PublicLayoutWrapper({ session }: any) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -77,7 +80,6 @@ function PublicLayoutWrapper({ session }: any) {
   );
 }
 
-// Función auxiliar de navegación global
 const handleGlobalNavigate = (navigate: any, page: string, extraData?: string) => {
   if (page === 'home') navigate('/');
   else if (page === 'catalog') navigate(extraData ? `/catalog?category=${extraData}` : '/catalog');
@@ -98,14 +100,19 @@ export default function App() {
   const navigate = useNavigate();
   const { session, loading: authLoading } = useAuth();
 
-  // Escuchar cambios de autenticación
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_IN') {
-        // Redirigir al admin solo si estamos en login
-        if (window.location.pathname === '/login') navigate('/admin');
+      if (event === 'SIGNED_OUT') {
+        const currentPath = window.location.pathname;
+        if (
+          currentPath.startsWith('/admin') || 
+          currentPath.startsWith('/system') ||
+          currentPath.startsWith('/quote') ||
+          currentPath.startsWith('/verify')
+        ) {
+          navigate('/');
+        }
       }
-      if (event === 'SIGNED_OUT') navigate('/');
     });
     return () => subscription.unsubscribe();
   }, [navigate]);
@@ -117,7 +124,6 @@ export default function App() {
       <Toaster position="top-right" theme="dark" richColors closeButton />
       <Suspense fallback={<FallbackLoader />}>
         <Routes>
-          {/* RUTAS PÚBLICAS (Con Layout) */}
           <Route element={<PublicLayoutWrapper session={session} />}>
             <Route path="/" element={<HomePage onNavigate={(p, e) => handleGlobalNavigate(navigate, p, e)} />} />
             <Route path="/catalog" element={<CatalogWrapper />} />
@@ -126,24 +132,20 @@ export default function App() {
             <Route path="/solutions" element={<SolutionsPage onNavigate={(p) => handleGlobalNavigate(navigate, p)} />} />
             <Route path="/clients" element={<ClientsPage onNavigate={(p) => handleGlobalNavigate(navigate, p)} />} />
             
-            {/* Rutas de Negocio Públicas (QR y Docs) */}
             <Route path="/quote/docs" element={<QuoteDocsViewer />} />
             <Route path="/verify/:folio" element={<VerifyWrapper />} />
             
-            {/* Login (Redirige si ya hay sesión) */}
-            <Route path="/login" element={session ? <Navigate to="/admin" replace /> : <Login onLoginSuccess={() => navigate('/admin')} />} />
+            {/* CORRECCIÓN: Uso del nuevo LoginWrapper */}
+            <Route path="/login" element={session ? <Navigate to="/admin" replace /> : <LoginWrapper />} />
           </Route>
 
-          {/* RUTAS PRIVADAS (Sin Layout Público, tienen su propio layout interno) */}
           <Route path="/admin/*" element={session ? <CommercialAdmin /> : <Navigate to="/login" replace />} />
           <Route path="/system" element={session ? <SystemConfig /> : <Navigate to="/" replace />} />
 
-          {/* Fallback 404 */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
       
-      {/* Herramienta de Debug (Solo si hay sesión) */}
       {session && <RoleSimulator />}
     </>
   );
