@@ -1,18 +1,37 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom'; 
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'; 
 import { supabase } from '../lib/supabase';
-import { FileText, Download, Package, AlertCircle, ShieldCheck } from 'lucide-react';
+import { FileText, Download, Package, AlertCircle, ShieldCheck, Printer, Loader2 } from 'lucide-react';
 import { QuoteItem } from '../types/quotes';
+import { useAuth } from '../hooks/useAuth';
+import { toast } from 'sonner';
+import QRCode from 'qrcode';
+import { generateQuotePDF } from '../utils/pdfGenerator';
 
 export default function QuoteDocsViewer() {
+  const { session, loading: authLoading } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
+
   const [loading, setLoading] = useState(true);
   const [itemsWithDocs, setItemsWithDocs] = useState<QuoteItem[]>([]);
+  const [fullQuote, setFullQuote] = useState<any>(null);
   const [error, setError] = useState('');
   const [displayTitle, setDisplayTitle] = useState('');
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
-  // PATRÓN DE MONTAJE ÚNICO: Soluciona el loop de carga en navegadores de celular
+  // REDIRECCIÓN DE SEGURIDAD
   useEffect(() => {
+    if (!authLoading && !session) {
+      toast.info("Inicia sesión para acceder a la carpeta digital");
+      navigate('/login', { state: { from: location.pathname + location.search }, replace: true });
+    }
+  }, [session, authLoading, navigate, location]);
+
+  useEffect(() => {
+    if (!session) return; // Evitar consulta si no hay sesión
+
     let isMounted = true;
 
     const fetchQuoteDocs = async () => {
@@ -28,24 +47,29 @@ export default function QuoteDocsViewer() {
       }
 
       try {
-        let query = supabase.from('crm_quotes').select('folio, version, items');
+        let resultData = null;
+        // CORRECCIÓN: Traemos la cotización COMPLETA junto al cliente para el PDF
+        const query = supabase.from('crm_quotes').select(`*, crm_clients (*)`);
 
         if (idParam) {
-          query = query.eq('id', idParam);
+          const { data, error } = await query.eq('id', idParam).maybeSingle();
+          if (error) throw error;
+          resultData = data;
         } else if (folioParam) {
           const decodedFolio = decodeURIComponent(folioParam);
-          query = query.eq('folio', decodedFolio).order('version', { ascending: false }).limit(1);
+          const { data, error } = await query.eq('folio', decodedFolio).order('version', { ascending: false }).limit(1);
+          if (error) throw error;
+          resultData = data && data.length > 0 ? data[0] : null;
         }
 
-        const { data, error } = await query.maybeSingle();
-
-        if (error) throw error;
-        if (!data) throw new Error("Documento no encontrado");
+        if (!resultData) throw new Error("Documento no encontrado en los registros.");
 
         if (isMounted) {
-          setDisplayTitle(`${data.folio}${data.version > 1 ? ` (Rev. ${data.version})` : ''}`);
-          if (data && data.items) {
-            const docs = (data.items as QuoteItem[]).filter(
+          setFullQuote(resultData);
+          setDisplayTitle(`${resultData.folio}${resultData.version > 1 ? ` (Rev. ${resultData.version})` : ''}`);
+          
+          if (resultData && resultData.items) {
+            const docs = (resultData.items as QuoteItem[]).filter(
               item => (item.datasheet_url && item.datasheet_url.length > 5) || 
                       (item.technical_spec_url && item.technical_spec_url.length > 5)
             );
@@ -53,7 +77,7 @@ export default function QuoteDocsViewer() {
           }
         }
       } catch (err) {
-        console.error(err);
+        console.error("Error validando documento:", err);
         if (isMounted) setError('Documento no encontrado o expirado.');
       } finally {
         if (isMounted) setLoading(false);
@@ -63,14 +87,53 @@ export default function QuoteDocsViewer() {
     fetchQuoteDocs();
 
     return () => { isMounted = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Array vacío obligatorio para ejecutar solo una vez al inicio
+  }, [searchParams, session]);
 
-  if (loading) return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-      <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-cyan-500"></div>
+  // NUEVO: Funcionalidad de descarga de PDF Oficial en la vista de Docs
+  const handleDownloadOfficialPDF = async () => {
+    if (!fullQuote || !fullQuote.crm_clients) return;
+    
+    setIsGeneratingPdf(true);
+    try {
+      const clientData = fullQuote.crm_clients;
+      const baseUrl = window.location.origin;
+      const docsUrl = `${baseUrl}/quote/docs?id=${fullQuote.id}`;
+      
+      const qrDataUrl = await QRCode.toDataURL(docsUrl, {
+        width: 200, margin: 1, color: { dark: '#000000', light: '#ffffff' }
+      });
+
+      const success = generateQuotePDF({
+        folio: fullQuote.folio,
+        items: fullQuote.items,
+        subtotal_neto: fullQuote.subtotal_neto,
+        iva: fullQuote.iva,
+        total_bruto: fullQuote.total_bruto || fullQuote.total,
+        created_at: fullQuote.created_at,
+        notes: fullQuote.notes,
+        terms: fullQuote.terms,
+        validity_days: fullQuote.validity_days,
+        version: fullQuote.version
+      }, clientData, qrDataUrl);
+
+      if (success) toast.success("PDF Oficial descargado");
+      else toast.error("Error al generar el PDF");
+    } catch (err) {
+      console.error(err);
+      toast.error("Error técnico al generar PDF");
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
+  if (loading || authLoading) return (
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-4">
+      <Loader2 className="w-10 h-10 text-cyan-500 animate-spin" />
+      <span className="text-slate-500 text-sm font-bold uppercase tracking-widest">Validando...</span>
     </div>
   );
+
+  if (!session) return null; 
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 p-6 md:p-12">
@@ -83,6 +146,19 @@ export default function QuoteDocsViewer() {
           <h1 className="text-2xl font-bold text-white">Documentación Técnica</h1>
           <p className="text-slate-400">Carpeta Digital para Cotización <span className="text-cyan-400 font-mono">{displayTitle || 'No Identificada'}</span></p>
         </div>
+
+        {fullQuote && !error && (
+          <div className="flex justify-center mb-6">
+            <button 
+              onClick={handleDownloadOfficialPDF}
+              disabled={isGeneratingPdf}
+              className="w-full sm:w-auto bg-orange-600 hover:bg-orange-500 text-white font-black py-4 px-8 rounded-2xl shadow-xl shadow-orange-950/40 flex items-center justify-center gap-3 transition-all active:scale-[0.98] border border-orange-400/20 disabled:opacity-50"
+            >
+              {isGeneratingPdf ? <Loader2 className="w-5 h-5 animate-spin" /> : <Printer className="w-5 h-5" />}
+              <span className="text-sm tracking-tight uppercase">Descargar Cotización (PDF)</span>
+            </button>
+          </div>
+        )}
 
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl">
           {error ? (
@@ -97,6 +173,7 @@ export default function QuoteDocsViewer() {
             </div>
           ) : (
             <div className="space-y-3">
+              <p className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-4 border-b border-slate-800 pb-2">Fichas Técnicas Adjuntas</p>
               {itemsWithDocs.map((item, idx) => (
                 <div key={idx} className="flex items-center justify-between p-4 bg-slate-950/50 border border-slate-800 rounded-xl hover:border-cyan-500/30 transition-all group">
                   <div className="flex items-center gap-4">
