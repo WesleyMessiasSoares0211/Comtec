@@ -18,19 +18,21 @@ interface Props {
 
 export default function VerifyQuote({ folio: propFolio }: Props) {
   const [searchParams] = useSearchParams();
-  const folio = propFolio || searchParams.get('folio');
-  const quoteId = searchParams.get('id'); 
-  
   const [quote, setQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(true);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
+  // PATRÓN DE MONTAJE ÚNICO: Previene loops de re-renderizado en navegadores embebidos móviles
   useEffect(() => {
+    let isMounted = true;
+
     async function fetchQuote() {
+      const folio = propFolio || searchParams.get('folio');
+      const quoteId = searchParams.get('id');
       const decodedFolio = folio ? decodeURIComponent(folio) : null;
 
       if (!decodedFolio && !quoteId) {
-        setLoading(false);
+        if (isMounted) setLoading(false);
         return;
       }
 
@@ -46,16 +48,19 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
         const { data, error } = await query.maybeSingle();
 
         if (error) throw error;
-        setQuote(data);
+        if (isMounted) setQuote(data);
       } catch (err) {
         console.error("Error validando documento:", err);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     }
 
     fetchQuote();
-  }, [folio, quoteId]);
+
+    return () => { isMounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Array vacío obligatorio para ejecutar solo una vez al inicio
 
   const handleDownloadOfficialPDF = async () => {
     if (!quote || !(quote as any).crm_clients) return;
@@ -94,7 +99,7 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
     }
   };
 
-  // CORRECCIÓN 2: Abrir PDFs directamente en nuevas pestañas (Compatible con móviles)
+  // CORRECCIÓN FUNCIONAL: Manejo de Pop-ups bloqueados por el navegador
   const handleOpenSpecsTabs = () => {
     if (!quote || !quote.items) return;
     const urls = quote.items
@@ -106,12 +111,26 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
       return;
     }
 
+    if (urls.length === 1) {
+      window.open(urls[0], '_blank');
+      return;
+    }
+
+    toast.success(`Intentando abrir ${urls.length} fichas técnicas...`);
+    
     urls.forEach((url, index) => {
-      setTimeout(() => window.open(url, '_blank'), index * 200);
+      setTimeout(() => {
+        const newWindow = window.open(url, '_blank');
+        // Si el navegador bloqueó la pestaña (comportamiento de seguridad estándar)
+        if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+          if (index === 1) { // Mostrar aviso solo 1 vez para no saturar al usuario
+            toast.warning("El navegador bloqueó múltiples pestañas. Por favor permite los pop-ups en la barra de direcciones o usa la opción '.ZIP'.", { duration: 8000 });
+          }
+        }
+      }, index * 150);
     });
   };
 
-  // CORRECCIÓN 2: Opción secundaria solo para descarga ZIP en PC
   const handleDownloadZip = async () => {
     if (!quote || !quote.items) return;
     const urls = quote.items
@@ -199,7 +218,6 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
 
           {hasTechSpecs && (
             <div className="flex gap-2 w-full">
-              {/* Botón Principal (Móvil y Desktop) - Abre Pestañas */}
               <button 
                 onClick={handleOpenSpecsTabs}
                 className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-black py-4 rounded-2xl border border-slate-700 flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
@@ -208,7 +226,6 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
                 <span className="text-xs sm:text-sm tracking-tight uppercase">Abrir Fichas</span>
               </button>
 
-              {/* Botón Secundario (Solo Desktop) - Descarga ZIP */}
               <button 
                 onClick={handleDownloadZip}
                 className="hidden md:flex flex-1 bg-slate-800 hover:bg-slate-700 text-white font-black py-4 rounded-2xl border border-slate-700 items-center justify-center gap-2 transition-all active:scale-[0.98]"
