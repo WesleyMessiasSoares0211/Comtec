@@ -40,7 +40,7 @@ export default function QuotePreview({
     setIsSaving(true);
     
     try {
-      // 1. Guardar en Base de Datos (Obtenemos el Folio Real)
+      // 1. Guardar en Base de Datos
       const savedQuote = await quoteService.create({
         client_id: client.id,
         items: items,
@@ -50,15 +50,14 @@ export default function QuotePreview({
         notes,
         terms,
         validity_days: validityDays,
-        // Datos de versión (si aplican)
         version: nextVersion,
         folio: existingFolio,
         parent_quote_id: parentQuoteId
       });
 
       // 2. Generar QR Real apuntando a la Carpeta Digital
-      // CORRECCIÓN: Usamos savedQuote.folio en lugar de quote.folio
-      const docsUrl = `${baseUrl}/quote/docs?folio=${encodeURIComponent(savedQuote.folio)}`;
+      // CORRECCIÓN CRÍTICA: Usamos el ID único (UUID) en lugar del folio para evitar colapso en revisiones
+      const docsUrl = `${baseUrl}/quote/docs?id=${savedQuote.id}`;
       
       let qrDataUrl = '';
       try {
@@ -76,7 +75,7 @@ export default function QuotePreview({
 
       // 3. Generar PDF
       const pdfSuccess = generateQuotePDF({
-        folio: savedQuote.folio, // Usamos el folio real retornado por la BBDD
+        folio: savedQuote.folio,
         items,
         subtotal_neto: totals.subtotal,
         iva: totals.iva,
@@ -86,7 +85,7 @@ export default function QuotePreview({
         terms,
         validity_days: validityDays,
         version: savedQuote.version
-      }, client, qrDataUrl); // Pasamos la imagen del QR generada
+      }, client, qrDataUrl);
 
       if (pdfSuccess) {
         toast.success(`Cotización ${savedQuote.folio} emitida correctamente`);
@@ -107,7 +106,6 @@ export default function QuotePreview({
 
   return (
     <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[100] flex items-center justify-center p-4" onClick={onClose}>
-      
       <div className="bg-white w-full max-w-4xl h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
         
         {/* Header Control */}
@@ -149,11 +147,11 @@ export default function QuotePreview({
               <div className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-[10px] font-bold mb-2 inline-block uppercase">Borrador</div>
               <p className="text-sm text-slate-500 font-medium">Fecha: {tempDate}</p>
               {validityDays && <p className="text-xs text-slate-400">Validez: {validityDays} días</p>}
+              {existingFolio && <p className="text-xs font-bold text-amber-600 mt-1">Rev: {nextVersion}</p>}
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-8 mb-12">
-            {/* Datos Cliente */}
             <div>
               <p className="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-widest">Cliente:</p>
               <p className="font-bold text-xl text-slate-900 leading-tight">{client.razon_social}</p>
@@ -163,7 +161,6 @@ export default function QuotePreview({
               </div>
             </div>
             
-            {/* QR Visual (Solo Preview) */}
             <div className="flex flex-col items-end">
               <div className="p-2 border border-slate-100 rounded-lg">
                 <QRCodeSVG value={previewUrl} size={80} level="M" />
@@ -172,7 +169,6 @@ export default function QuotePreview({
             </div>
           </div>
 
-          {/* Tabla de Items */}
           <table className="w-full mb-8">
             <thead>
               <tr className="border-b-2 border-slate-900 text-left">
@@ -188,7 +184,6 @@ export default function QuotePreview({
                   <td className="py-4 text-sm font-mono text-cyan-700 font-bold">{item.part_number}</td>
                   <td className="py-4 text-sm font-semibold text-slate-700">
                     {item.name}
-                    {/* Indicador Visual de Ficha Técnica */}
                     {item.datasheet_url && (
                       <div className="flex items-center gap-1 mt-1 text-[10px] text-cyan-600 font-normal">
                         <FileCheck className="w-3 h-3" /> Ficha Técnica Incluida
@@ -202,7 +197,6 @@ export default function QuotePreview({
             </tbody>
           </table>
 
-          {/* Totales */}
           <div className="flex justify-end border-t-2 border-slate-100 pt-8 mb-12">
             <div className="w-72 space-y-2">
               <div className="flex justify-between text-sm">
@@ -220,7 +214,6 @@ export default function QuotePreview({
             </div>
           </div>
 
-          {/* Notas y Condiciones */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-xs border-t border-slate-100 pt-8">
             {notes && (
               <div>
