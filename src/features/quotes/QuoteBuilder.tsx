@@ -7,29 +7,25 @@ import { useClients } from '../../hooks/useClients';
 import { useProducts } from '../../hooks/useProducts';
 import { toast } from 'sonner';
 import QuotePreview from './QuotePreview';
-import { Client } from '../../types/client';
 
 interface Props {
-  initialData?: any | null; // Datos para cargar en modo revisión
-  onSuccess?: () => void;   // Para limpiar el estado padre al terminar
+  initialData?: any | null; 
+  onSuccess?: () => void;   
 }
 
 export default function QuoteBuilder({ initialData, onSuccess }: Props) {
   const { clients } = useClients();
   const { products } = useProducts();
 
-  // Estados del Formulario
   const [selectedClientId, setSelectedClientId] = useState('');
   const [items, setItems] = useState<any[]>([]);
   const [validityDays, setValidityDays] = useState(15);
   const [notes, setNotes] = useState('');
   const [terms, setTerms] = useState('');
   
-  // Estado de UI
   const [showPreview, setShowPreview] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Estado para controlar si es revisión
   const [isRevisionMode, setIsRevisionMode] = useState(false);
   const [parentFolio, setParentFolio] = useState('');
   const [nextVersion, setNextVersion] = useState(1);
@@ -37,7 +33,6 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
 
   const selectedClient = clients.find(c => c.id === selectedClientId);
 
-  // EFECTO: Cargar datos si vienen en initialData (Modo Revisión)
   useEffect(() => {
     if (initialData) {
       setIsRevisionMode(true);
@@ -47,14 +42,12 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
       setTerms(initialData.terms || '');
       setValidityDays(initialData.validity_days || 15);
       
-      // Datos críticos para la revisión
       setParentFolio(initialData.folio);
       setNextVersion((initialData.version || 1) + 1);
       setParentQuoteId(initialData.id);
       
       toast.info(`Cargando datos para revisión de ${initialData.folio}`);
     } else {
-      // Resetear si no hay datos (Modo Nuevo)
       setIsRevisionMode(false);
       setParentFolio('');
       setNextVersion(1);
@@ -66,7 +59,6 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
     }
   }, [initialData]);
 
-  // EFECTO: Cargar términos predeterminados si es nueva cotización
   useEffect(() => {
     if (selectedClient && !isRevisionMode && !terms) {
       const condition = selectedClient.condicion_comercial || 'Contado / Transferencia';
@@ -78,7 +70,6 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
     }
   }, [selectedClientId, isRevisionMode, clients]);
 
-  // Cálculos en tiempo real
   const totals = useMemo(() => {
     const subtotal = items.reduce((acc, item) => acc + (item.total || 0), 0);
     const iva = Math.round(subtotal * 0.19);
@@ -92,6 +83,9 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
       return;
     }
     
+    // CORRECCIÓN 1: Captura estricta de la URL de ficha técnica sin importar el alias de la BD
+    const urlFicha = product.datasheet_url || product.technical_spec_url || null;
+
     setItems([...items, {
       product_id: product.id,
       part_number: product.part_number,
@@ -100,7 +94,7 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
       unit_price: product.price,
       quantity: 1,
       total: product.price,
-      datasheet_url: product.datasheet_url
+      datasheet_url: urlFicha
     }]);
     setSearchTerm('');
   };
@@ -119,12 +113,10 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
 
   const filteredProducts = useMemo(() => {
     if (!products) return [];
-    
     return products.filter(p => {
       const nameSafe = (p.name || '').toLowerCase();
       const codeSafe = (p.part_number || '').toLowerCase();
       const searchSafe = searchTerm.toLowerCase();
-
       return nameSafe.includes(searchSafe) || codeSafe.includes(searchSafe);
     }).slice(0, 5);
   }, [products, searchTerm]);
@@ -132,7 +124,6 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
   return (
     <div className="flex flex-col h-full space-y-6 animate-in fade-in">
       
-      {/* Indicador de Revisión */}
       {isRevisionMode && (
         <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 p-4 rounded-xl flex items-center justify-between animate-pulse">
           <div className="flex items-center gap-2">
@@ -142,16 +133,12 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
               <p className="text-xs text-amber-500/70">Original: {parentFolio}</p>
             </div>
           </div>
-          <button 
-             onClick={onSuccess} 
-             className="text-xs font-bold underline hover:text-amber-300"
-          >
+          <button onClick={onSuccess} className="text-xs font-bold underline hover:text-amber-300">
             Cancelar Edición
           </button>
         </div>
       )}
 
-      {/* 1. CONFIGURACIÓN */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-slate-900/50 p-6 rounded-2xl border border-slate-800">
         <div className="md:col-span-2 space-y-2">
           <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Cliente</label>
@@ -159,7 +146,7 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
             className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:ring-2 focus:ring-cyan-500/50 outline-none transition-all"
             value={selectedClientId}
             onChange={(e) => setSelectedClientId(e.target.value)}
-            disabled={isRevisionMode} // No cambiar cliente en revisión
+            disabled={isRevisionMode} 
           >
             <option value="">-- Seleccionar Cliente --</option>
             {clients.map(c => (
@@ -182,9 +169,7 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
         </div>
       </div>
 
-      {/* 2. ÍTEMS */}
       <div className="flex-1 bg-slate-900/30 border border-slate-800 rounded-2xl p-6 min-h-[400px] flex flex-col">
-        {/* Buscador */}
         <div className="relative mb-6 z-20">
           <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
@@ -210,7 +195,7 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
                     <div className="text-xs text-slate-500 font-mono">{product.part_number}</div>
                   </div>
                   <div className="flex items-center gap-4">
-                    {product.datasheet_url && (
+                    {(product.datasheet_url || product.technical_spec_url) && (
                       <span className="flex items-center gap-1 text-[10px] text-cyan-400 bg-cyan-950/30 px-2 py-0.5 rounded border border-cyan-500/20">
                         <LinkIcon className="w-3 h-3" /> Ficha Técnica
                       </span>
@@ -227,7 +212,6 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
           )}
         </div>
 
-        {/* Tabla */}
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           {items.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-slate-600 border-2 border-dashed border-slate-800 rounded-xl">
@@ -282,7 +266,6 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
           )}
         </div>
 
-        {/* Totales */}
         <div className="mt-6 pt-4 border-t border-slate-800 flex justify-end">
           <div className="w-64 space-y-2">
             <div className="flex justify-between text-sm text-slate-400">
@@ -301,10 +284,9 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
         </div>
       </div>
 
-      {/* 3. PIE: NOTAS Y TÉRMINOS */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
-          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block flex items-center gap-2">
+          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-2 block">
             <FileText className="w-3 h-3" /> Notas Internas
           </label>
           <textarea 
@@ -315,7 +297,7 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
           />
         </div>
         <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
-          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block flex items-center gap-2">
+          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-2 block">
             <AlertCircle className="w-3 h-3" /> Términos y Condiciones
           </label>
           <textarea 
@@ -346,8 +328,7 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
           notes={notes}
           terms={terms}
           validityDays={validityDays}
-          // Props para la revisión (si aplica)
-          existingFolio={isRevisionMode ? parentFolio : undefined} // Ojo: QuotePreview debe aceptar esta prop
+          existingFolio={isRevisionMode ? parentFolio : undefined} 
           nextVersion={nextVersion}
           parentQuoteId={parentQuoteId}
           onSuccess={onSuccess}
