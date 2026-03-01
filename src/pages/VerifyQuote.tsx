@@ -2,22 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { 
-  ShieldCheck, 
-  FileText, 
-  AlertTriangle, 
-  Loader2, 
-  ChevronRight,
-  Building2,
-  Layers,
-  Printer,
-  Download
+  ShieldCheck, FileText, AlertTriangle, Loader2, ChevronRight,
+  Building2, Layers, Printer
 } from 'lucide-react';
 import { Quote } from '../types/quotes';
-import { generateQuotePDF } from '../utils/pdfGenerator'; // Importamos el generador oficial
+import { generateQuotePDF } from '../utils/pdfGenerator';
 import { toast } from 'sonner';
-import QRCode from 'qrcode'; // Necesario para regenerar el QR del PDF
+import QRCode from 'qrcode';
+import JSZip from 'jszip'; // Requiere: npm install jszip file-saver
+import { saveAs } from 'file-saver';
 
-// Aceptamos folio como prop por si viene del router
 interface Props {
   folio?: string;
 }
@@ -25,6 +19,7 @@ interface Props {
 export default function VerifyQuote({ folio: propFolio }: Props) {
   const [searchParams] = useSearchParams();
   const folio = propFolio || searchParams.get('folio');
+  const quoteId = searchParams.get('id'); // NUEVO: Extraemos el ID exacto
   
   const [quote, setQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,60 +29,59 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
     async function fetchQuote() {
       const decodedFolio = folio ? decodeURIComponent(folio) : null;
 
-      if (!decodedFolio) {
+      // Validamos que venga algún identificador
+      if (!decodedFolio && !quoteId) {
         setLoading(false);
         return;
       }
 
       try {
-        // CORRECCIÓN: Solicitamos todos los datos del cliente para el PDF
-        const { data, error } = await supabase
-          .from('crm_quotes')
-          .select(`
-            *,
-            crm_clients (*)
-          `)
-          .eq('folio', decodedFolio)
-          .maybeSingle();
+        let query = supabase.from('crm_quotes').select(`*, crm_clients (*)`);
+
+        // CORRECCIÓN CRÍTICA: Lógica de búsqueda adaptativa
+        if (quoteId) {
+          // 1. Prioridad: Búsqueda exacta por ID (Soporta Revisiones)
+          query = query.eq('id', quoteId);
+        } else if (decodedFolio) {
+          // 2. Fallback: QRs antiguos. Si hay revisiones, forzamos traer solo la más reciente
+          query = query.eq('folio', decodedFolio).order('version', { ascending: false }).limit(1);
+        }
+
+        const { data, error } = await query.maybeSingle();
 
         if (error) throw error;
         setQuote(data);
       } catch (err) {
-        console.error("Error validando folio:", err);
+        console.error("Error validando documento:", err);
       } finally {
         setLoading(false);
       }
     }
 
     fetchQuote();
-  }, [folio]);
+  }, [folio, quoteId]);
 
-  // --- FUNCIÓN CORREGIDA: Generar PDF Oficial ---
   const handleDownloadOfficialPDF = async () => {
     if (!quote || !(quote as any).crm_clients) return;
     
     setIsGeneratingPdf(true);
     try {
-      // 1. Reconstruir objeto Cliente
       const clientData = (quote as any).crm_clients;
-      
-      // 2. Generar URL y Código QR para el PDF
       const baseUrl = window.location.origin;
-      const docsUrl = `${baseUrl}/quote/docs?folio=${encodeURIComponent(quote.folio)}`;
+      
+      // NUEVO: Reconstruimos el QR usando el ID para que coincida con el nuevo estándar
+      const docsUrl = `${baseUrl}/quote/docs?id=${quote.id}`;
       
       const qrDataUrl = await QRCode.toDataURL(docsUrl, {
-        width: 200,
-        margin: 1,
-        color: { dark: '#000000', light: '#ffffff' }
+        width: 200, margin: 1, color: { dark: '#000000', light: '#ffffff' }
       });
 
-      // 3. Invocar al Generador Oficial
       const success = generateQuotePDF({
         folio: quote.folio,
         items: quote.items,
         subtotal_neto: quote.subtotal_neto,
         iva: quote.iva,
-        total_bruto: quote.total_bruto || quote.total, // Soporte retroactivo
+        total_bruto: quote.total_bruto || quote.total,
         created_at: quote.created_at,
         notes: quote.notes,
         terms: quote.terms,
@@ -106,34 +100,56 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
     }
   };
 
-  // --- FUNCIÓN CORREGIDA: Descargar Fichas ---
-  const handleDownloadAllSpecs = () => {
+  // CORRECCIÓN FUNCIONAL: Empaquetado de Fichas Técnicas
+  const handleDownloadAllSpecs = async () => {
     if (!quote || !quote.items) return;
     
-    // CORRECCIÓN: Usamos 'datasheet_url' (y 'technical_spec_url' por compatibilidad)
     const urls = quote.items
-      .map(item => item.datasheet_url || item.technical_spec_url)
-      .filter((url): url is string => !!url && url.length > 5);
+      .map(item => ({ url: item.datasheet_url || item.technical_spec_url, partNumber: item.part_number }))
+      .filter((doc): doc is {url: string, partNumber: string} => !!doc.url && doc.url.length > 5);
 
     if (urls.length === 0) {
-      toast.info("No hay fichas técnicas disponibles para estos productos.");
+      toast.info("No hay fichas técnicas disponibles.");
       return;
     }
 
-    toast.info(`Iniciando descarga de ${urls.length} fichas...`);
+    // Si es solo 1 ficha (típico uso en celular), la abrimos directo
+    if (urls.length === 1) {
+      window.open(urls[0].url, '_blank');
+      return;
+    }
+
+    // Si son múltiples, armamos el paquete ZIP para evitar bloqueos del navegador
+    toast.loading(`Generando carpeta digital con ${urls.length} fichas...`, { id: 'zip-process' });
     
-    // Abrir en pestañas separadas con un pequeño retraso para evitar bloqueo
-    urls.forEach((url, index) => {
-      setTimeout(() => {
-        window.open(url, '_blank');
-      }, index * 500);
-    });
+    try {
+      const zip = new JSZip();
+      const folderName = `Fichas_Tecnicas_${quote.folio}_v${quote.version || 1}`;
+      const folder = zip.folder(folderName);
+
+      await Promise.all(urls.map(async (doc, index) => {
+        try {
+          const response = await fetch(doc.url);
+          const blob = await response.blob();
+          folder?.file(`${doc.partNumber}_Especificacion_${index + 1}.pdf`, blob);
+        } catch (fetchErr) {
+          console.error(`Error obteniendo ${doc.partNumber}:`, fetchErr);
+        }
+      }));
+
+      const zipContent = await zip.generateAsync({ type: 'blob' });
+      saveAs(zipContent, `${folderName}.zip`);
+      toast.success("Carpeta digital descargada", { id: 'zip-process' });
+    } catch (zipError) {
+      console.error(zipError);
+      toast.error("Hubo un problema al comprimir los archivos", { id: 'zip-process' });
+    }
   };
 
   if (loading) return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-4">
       <Loader2 className="w-10 h-10 text-cyan-500 animate-spin" />
-      <p className="text-slate-500 font-bold tracking-widest text-xs uppercase italic">Autenticando Folio...</p>
+      <p className="text-slate-500 font-bold tracking-widest text-xs uppercase italic">Autenticando Documento...</p>
     </div>
   );
 
@@ -143,9 +159,9 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
         <div className="bg-red-500/10 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6">
           <AlertTriangle className="w-8 h-8 text-red-500" />
         </div>
-        <h2 className="text-white font-bold text-xl mb-2">Folio no Registrado</h2>
+        <h2 className="text-white font-bold text-xl mb-2">Documento no Registrado</h2>
         <p className="text-slate-400 text-sm mb-8">
-          El documento <span className="text-white font-mono">{folio || 'SIN FOLIO'}</span> no ha sido emitido por el sistema oficial.
+          El documento con identificador no ha sido emitido o se encuentra expirado en nuestros registros.
         </p>
         <Link to="/" className="inline-flex items-center gap-2 text-cyan-500 font-bold hover:text-cyan-400 transition-colors uppercase text-xs tracking-tighter">
           Volver al Portal <ChevronRight className="w-4 h-4" />
@@ -154,18 +170,15 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
     </div>
   );
 
-  // Verificamos si hay fichas usando ambos nombres de columna posibles
   const hasTechSpecs = quote.items?.some(i => i.datasheet_url || i.technical_spec_url);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 selection:bg-cyan-500/30 font-sans print:bg-white print:text-black">
-      {/* Background Decor */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none print:hidden">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-cyan-500/5 blur-[120px] rounded-full" />
       </div>
 
       <div className="relative max-w-3xl mx-auto px-6 py-12">
-        {/* Header */}
         <div className="text-center mb-10 print:hidden">
           <div className="inline-flex items-center gap-2 bg-cyan-500/10 border border-cyan-500/20 px-4 py-2 rounded-full mb-4">
             <ShieldCheck className="w-4 h-4 text-cyan-400" />
@@ -175,9 +188,7 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
           <p className="text-slate-500 text-sm font-medium">Documento emitido por Comtec Industrial</p>
         </div>
 
-        {/* ACCIONES PRINCIPALES */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8 print:hidden">
-          {/* BOTÓN 1: Descargar PDF Oficial */}
           <button 
             onClick={handleDownloadOfficialPDF}
             disabled={isGeneratingPdf}
@@ -189,7 +200,6 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
             </span>
           </button>
 
-          {/* BOTÓN 2: Descargar Fichas */}
           {hasTechSpecs && (
             <button 
               onClick={handleDownloadAllSpecs}
@@ -201,13 +211,17 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
           )}
         </div>
 
-        {/* Certificado Visual (Solo para lectura en pantalla) */}
         <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-3xl overflow-hidden shadow-2xl mb-8">
           <div className="p-8 border-b border-slate-800 bg-gradient-to-br from-slate-900/50 to-slate-950/50">
             <div className="flex justify-between items-start mb-8">
               <div>
                 <p className="text-slate-500 text-[10px] uppercase font-black tracking-widest mb-1">Folio Registrado</p>
-                <p className="text-cyan-500 font-mono text-3xl font-bold tracking-tight">{quote.folio}</p>
+                <div className="flex items-end gap-2">
+                   <p className="text-cyan-500 font-mono text-3xl font-bold tracking-tight">{quote.folio}</p>
+                   {quote.version && quote.version > 1 && (
+                     <span className="text-amber-500 font-bold mb-1">Rev. {quote.version}</span>
+                   )}
+                </div>
               </div>
               <div className="text-right">
                 <p className="text-slate-500 text-[10px] uppercase font-black tracking-widest mb-1">Fecha de Emisión</p>
