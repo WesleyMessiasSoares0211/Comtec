@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { 
   ShieldCheck, FileText, AlertTriangle, Loader2, ChevronRight,
@@ -11,19 +11,33 @@ import { toast } from 'sonner';
 import QRCode from 'qrcode';
 import JSZip from 'jszip'; 
 import { saveAs } from 'file-saver';
+import { useAuth } from '../hooks/useAuth';
 
 interface Props {
   folio?: string;
 }
 
 export default function VerifyQuote({ folio: propFolio }: Props) {
+  const { session, loading: authLoading } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
+
   const [quote, setQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(true);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
-  // PATRÓN DE MONTAJE ÚNICO: Previene loops de re-renderizado en navegadores embebidos móviles
+  // REDIRECCIÓN DE SEGURIDAD
   useEffect(() => {
+    if (!authLoading && !session) {
+      toast.info("Inicia sesión para verificar el documento");
+      navigate('/login', { state: { from: location.pathname + location.search }, replace: true });
+    }
+  }, [session, authLoading, navigate, location]);
+
+  useEffect(() => {
+    if (!session) return; // Esperar a la autenticación
+
     let isMounted = true;
 
     async function fetchQuote() {
@@ -37,18 +51,20 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
       }
 
       try {
-        let query = supabase.from('crm_quotes').select(`*, crm_clients (*)`);
+        let resultData = null;
+        const query = supabase.from('crm_quotes').select(`*, crm_clients (*)`);
 
         if (quoteId) {
-          query = query.eq('id', quoteId);
+          const { data, error } = await query.eq('id', quoteId).maybeSingle();
+          if (error) throw error;
+          resultData = data;
         } else if (decodedFolio) {
-          query = query.eq('folio', decodedFolio).order('version', { ascending: false }).limit(1);
+          const { data, error } = await query.eq('folio', decodedFolio).order('version', { ascending: false }).limit(1);
+          if (error) throw error;
+          resultData = data && data.length > 0 ? data[0] : null;
         }
 
-        const { data, error } = await query.maybeSingle();
-
-        if (error) throw error;
-        if (isMounted) setQuote(data);
+        if (isMounted) setQuote(resultData);
       } catch (err) {
         console.error("Error validando documento:", err);
       } finally {
@@ -59,8 +75,7 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
     fetchQuote();
 
     return () => { isMounted = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Array vacío obligatorio para ejecutar solo una vez al inicio
+  }, [propFolio, searchParams, session]);
 
   const handleDownloadOfficialPDF = async () => {
     if (!quote || !(quote as any).crm_clients) return;
@@ -99,7 +114,6 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
     }
   };
 
-  // CORRECCIÓN FUNCIONAL: Manejo de Pop-ups bloqueados por el navegador
   const handleOpenSpecsTabs = () => {
     if (!quote || !quote.items) return;
     const urls = quote.items
@@ -121,10 +135,9 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
     urls.forEach((url, index) => {
       setTimeout(() => {
         const newWindow = window.open(url, '_blank');
-        // Si el navegador bloqueó la pestaña (comportamiento de seguridad estándar)
         if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
-          if (index === 1) { // Mostrar aviso solo 1 vez para no saturar al usuario
-            toast.warning("El navegador bloqueó múltiples pestañas. Por favor permite los pop-ups en la barra de direcciones o usa la opción '.ZIP'.", { duration: 8000 });
+          if (index === 1) { 
+            toast.warning("El navegador bloqueó múltiples pestañas. Por favor permite los pop-ups o usa la opción '.ZIP'.", { duration: 8000 });
           }
         }
       }, index * 150);
@@ -162,12 +175,14 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
     }
   };
 
-  if (loading) return (
+  if (loading || authLoading) return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-4">
       <Loader2 className="w-10 h-10 text-cyan-500 animate-spin" />
-      <p className="text-slate-500 font-bold tracking-widest text-xs uppercase italic">Autenticando Documento...</p>
+      <span className="text-slate-500 text-sm font-bold uppercase tracking-widest">Verificando...</span>
     </div>
   );
+
+  if (!session) return null; // Evita parpadeo visual mientras se ejecuta el Navigate a login
 
   if (!quote) return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
