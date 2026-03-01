@@ -1,41 +1,48 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom'; // CAMBIO: Usamos useSearchParams
+import { useSearchParams } from 'react-router-dom'; 
 import { supabase } from '../lib/supabase';
 import { FileText, Download, Package, AlertCircle, ShieldCheck } from 'lucide-react';
 import { QuoteItem } from '../types/quotes';
 
 export default function QuoteDocsViewer() {
   const [searchParams] = useSearchParams();
-  const folio = searchParams.get('folio'); // CAMBIO: Obtenemos el folio del parámetro ?folio=
+  const folioParam = searchParams.get('folio'); 
+  const idParam = searchParams.get('id'); // CORRECCIÓN 3: Compatibilidad de lectura del QR
   
   const [loading, setLoading] = useState(true);
   const [itemsWithDocs, setItemsWithDocs] = useState<QuoteItem[]>([]);
   const [error, setError] = useState('');
+  const [displayTitle, setDisplayTitle] = useState('');
 
   useEffect(() => {
-    if (folio) {
+    if (folioParam || idParam) {
         fetchQuoteDocs();
     } else {
         setLoading(false);
-        setError('Enlace incompleto: No se especificó el folio.');
+        setError('Enlace incompleto: No se detectó un identificador de documento válido.');
     }
-  }, [folio]);
+  }, [folioParam, idParam]);
 
   const fetchQuoteDocs = async () => {
     try {
-      // Nota: searchParams ya decodifica automáticamente, pero por seguridad extra:
-      const decodedFolio = decodeURIComponent(folio || '');
+      let query = supabase.from('crm_quotes').select('folio, version, items');
 
-      const { data, error } = await supabase
-        .from('crm_quotes')
-        .select('items')
-        .eq('folio', decodedFolio) // Buscamos por el folio exacto
-        .single();
+      if (idParam) {
+        query = query.eq('id', idParam);
+      } else if (folioParam) {
+        const decodedFolio = decodeURIComponent(folioParam);
+        query = query.eq('folio', decodedFolio).order('version', { ascending: false }).limit(1);
+      }
+
+      const { data, error } = await query.maybeSingle();
 
       if (error) throw error;
+      if (!data) throw new Error("Documento no encontrado");
+
+      // Establecer el título de la cotización reconociendo revisiones
+      setDisplayTitle(`${data.folio}${data.version > 1 ? ` (Rev. ${data.version})` : ''}`);
 
       if (data && data.items) {
-        // Filtramos items que tengan URL de ficha técnica válida
         const docs = (data.items as QuoteItem[]).filter(
           item => (item.datasheet_url && item.datasheet_url.length > 5) || 
                   (item.technical_spec_url && item.technical_spec_url.length > 5)
@@ -60,16 +67,14 @@ export default function QuoteDocsViewer() {
     <div className="min-h-screen bg-slate-950 text-slate-200 p-6 md:p-12">
       <div className="max-w-2xl mx-auto space-y-8">
         
-        {/* HEADER */}
         <div className="text-center space-y-2">
           <div className="inline-flex p-3 rounded-2xl bg-cyan-500/10 mb-4">
             <ShieldCheck className="w-8 h-8 text-cyan-400" />
           </div>
           <h1 className="text-2xl font-bold text-white">Documentación Técnica</h1>
-          <p className="text-slate-400">Carpeta Digital para Cotización <span className="text-cyan-400 font-mono">{folio}</span></p>
+          <p className="text-slate-400">Carpeta Digital para Cotización <span className="text-cyan-400 font-mono">{displayTitle || 'No Identificada'}</span></p>
         </div>
 
-        {/* LISTA DE ARCHIVOS */}
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl">
           {error ? (
             <div className="text-center py-8 text-red-400">
@@ -112,7 +117,6 @@ export default function QuoteDocsViewer() {
           )}
         </div>
 
-        {/* FOOTER */}
         <div className="text-center text-xs text-slate-600">
           <p>© {new Date().getFullYear()} Comtec Industrial Solutions</p>
         </div>
