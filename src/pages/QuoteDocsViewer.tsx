@@ -6,56 +6,65 @@ import { QuoteItem } from '../types/quotes';
 
 export default function QuoteDocsViewer() {
   const [searchParams] = useSearchParams();
-  const folioParam = searchParams.get('folio'); 
-  const idParam = searchParams.get('id'); // CORRECCIÓN 3: Compatibilidad de lectura del QR
-  
   const [loading, setLoading] = useState(true);
   const [itemsWithDocs, setItemsWithDocs] = useState<QuoteItem[]>([]);
   const [error, setError] = useState('');
   const [displayTitle, setDisplayTitle] = useState('');
 
+  // PATRÓN DE MONTAJE ÚNICO: Soluciona el loop de carga en navegadores de celular
   useEffect(() => {
-    if (folioParam || idParam) {
-        fetchQuoteDocs();
-    } else {
-        setLoading(false);
-        setError('Enlace incompleto: No se detectó un identificador de documento válido.');
-    }
-  }, [folioParam, idParam]);
+    let isMounted = true;
 
-  const fetchQuoteDocs = async () => {
-    try {
-      let query = supabase.from('crm_quotes').select('folio, version, items');
+    const fetchQuoteDocs = async () => {
+      const folioParam = searchParams.get('folio'); 
+      const idParam = searchParams.get('id');
 
-      if (idParam) {
-        query = query.eq('id', idParam);
-      } else if (folioParam) {
-        const decodedFolio = decodeURIComponent(folioParam);
-        query = query.eq('folio', decodedFolio).order('version', { ascending: false }).limit(1);
+      if (!folioParam && !idParam) {
+        if (isMounted) {
+          setLoading(false);
+          setError('Enlace incompleto: No se detectó un identificador de documento válido.');
+        }
+        return;
       }
 
-      const { data, error } = await query.maybeSingle();
+      try {
+        let query = supabase.from('crm_quotes').select('folio, version, items');
 
-      if (error) throw error;
-      if (!data) throw new Error("Documento no encontrado");
+        if (idParam) {
+          query = query.eq('id', idParam);
+        } else if (folioParam) {
+          const decodedFolio = decodeURIComponent(folioParam);
+          query = query.eq('folio', decodedFolio).order('version', { ascending: false }).limit(1);
+        }
 
-      // Establecer el título de la cotización reconociendo revisiones
-      setDisplayTitle(`${data.folio}${data.version > 1 ? ` (Rev. ${data.version})` : ''}`);
+        const { data, error } = await query.maybeSingle();
 
-      if (data && data.items) {
-        const docs = (data.items as QuoteItem[]).filter(
-          item => (item.datasheet_url && item.datasheet_url.length > 5) || 
-                  (item.technical_spec_url && item.technical_spec_url.length > 5)
-        );
-        setItemsWithDocs(docs);
+        if (error) throw error;
+        if (!data) throw new Error("Documento no encontrado");
+
+        if (isMounted) {
+          setDisplayTitle(`${data.folio}${data.version > 1 ? ` (Rev. ${data.version})` : ''}`);
+          if (data && data.items) {
+            const docs = (data.items as QuoteItem[]).filter(
+              item => (item.datasheet_url && item.datasheet_url.length > 5) || 
+                      (item.technical_spec_url && item.technical_spec_url.length > 5)
+            );
+            setItemsWithDocs(docs);
+          }
+        }
+      } catch (err) {
+        console.error(err);
+        if (isMounted) setError('Documento no encontrado o expirado.');
+      } finally {
+        if (isMounted) setLoading(false);
       }
-    } catch (err) {
-      console.error(err);
-      setError('Documento no encontrado o expirado.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+
+    fetchQuoteDocs();
+
+    return () => { isMounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Array vacío obligatorio para ejecutar solo una vez al inicio
 
   if (loading) return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center">
