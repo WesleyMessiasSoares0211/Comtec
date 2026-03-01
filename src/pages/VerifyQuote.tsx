@@ -3,13 +3,13 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { 
   ShieldCheck, FileText, AlertTriangle, Loader2, ChevronRight,
-  Building2, Layers, Printer
+  Building2, Layers, Printer, ExternalLink, FileArchive
 } from 'lucide-react';
 import { Quote } from '../types/quotes';
 import { generateQuotePDF } from '../utils/pdfGenerator';
 import { toast } from 'sonner';
 import QRCode from 'qrcode';
-import JSZip from 'jszip'; // Requiere: npm install jszip file-saver
+import JSZip from 'jszip'; 
 import { saveAs } from 'file-saver';
 
 interface Props {
@@ -19,7 +19,7 @@ interface Props {
 export default function VerifyQuote({ folio: propFolio }: Props) {
   const [searchParams] = useSearchParams();
   const folio = propFolio || searchParams.get('folio');
-  const quoteId = searchParams.get('id'); // NUEVO: Extraemos el ID exacto
+  const quoteId = searchParams.get('id'); 
   
   const [quote, setQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,7 +29,6 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
     async function fetchQuote() {
       const decodedFolio = folio ? decodeURIComponent(folio) : null;
 
-      // Validamos que venga algún identificador
       if (!decodedFolio && !quoteId) {
         setLoading(false);
         return;
@@ -38,12 +37,9 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
       try {
         let query = supabase.from('crm_quotes').select(`*, crm_clients (*)`);
 
-        // CORRECCIÓN CRÍTICA: Lógica de búsqueda adaptativa
         if (quoteId) {
-          // 1. Prioridad: Búsqueda exacta por ID (Soporta Revisiones)
           query = query.eq('id', quoteId);
         } else if (decodedFolio) {
-          // 2. Fallback: QRs antiguos. Si hay revisiones, forzamos traer solo la más reciente
           query = query.eq('folio', decodedFolio).order('version', { ascending: false }).limit(1);
         }
 
@@ -68,8 +64,6 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
     try {
       const clientData = (quote as any).crm_clients;
       const baseUrl = window.location.origin;
-      
-      // NUEVO: Reconstruimos el QR usando el ID para que coincida con el nuevo estándar
       const docsUrl = `${baseUrl}/quote/docs?id=${quote.id}`;
       
       const qrDataUrl = await QRCode.toDataURL(docsUrl, {
@@ -100,27 +94,31 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
     }
   };
 
-  // CORRECCIÓN FUNCIONAL: Empaquetado de Fichas Técnicas
-  const handleDownloadAllSpecs = async () => {
+  // CORRECCIÓN 2: Abrir PDFs directamente en nuevas pestañas (Compatible con móviles)
+  const handleOpenSpecsTabs = () => {
     if (!quote || !quote.items) return;
-    
     const urls = quote.items
-      .map(item => ({ url: item.datasheet_url || item.technical_spec_url, partNumber: item.part_number }))
-      .filter((doc): doc is {url: string, partNumber: string} => !!doc.url && doc.url.length > 5);
+      .map(item => item.datasheet_url || item.technical_spec_url)
+      .filter((url): url is string => !!url && url.length > 5);
 
     if (urls.length === 0) {
       toast.info("No hay fichas técnicas disponibles.");
       return;
     }
 
-    // Si es solo 1 ficha (típico uso en celular), la abrimos directo
-    if (urls.length === 1) {
-      window.open(urls[0].url, '_blank');
-      return;
-    }
+    urls.forEach((url, index) => {
+      setTimeout(() => window.open(url, '_blank'), index * 200);
+    });
+  };
 
-    // Si son múltiples, armamos el paquete ZIP para evitar bloqueos del navegador
-    toast.loading(`Generando carpeta digital con ${urls.length} fichas...`, { id: 'zip-process' });
+  // CORRECCIÓN 2: Opción secundaria solo para descarga ZIP en PC
+  const handleDownloadZip = async () => {
+    if (!quote || !quote.items) return;
+    const urls = quote.items
+      .map(item => ({ url: item.datasheet_url || item.technical_spec_url, partNumber: item.part_number }))
+      .filter((doc): doc is {url: string, partNumber: string} => !!doc.url && doc.url.length > 5);
+
+    toast.loading(`Comprimiendo ${urls.length} fichas...`, { id: 'zip-process' });
     
     try {
       const zip = new JSZip();
@@ -131,9 +129,9 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
         try {
           const response = await fetch(doc.url);
           const blob = await response.blob();
-          folder?.file(`${doc.partNumber}_Especificacion_${index + 1}.pdf`, blob);
-        } catch (fetchErr) {
-          console.error(`Error obteniendo ${doc.partNumber}:`, fetchErr);
+          folder?.file(`${doc.partNumber}_Especificacion.pdf`, blob);
+        } catch (err) {
+          console.error(`Error obteniendo ${doc.partNumber}`, err);
         }
       }));
 
@@ -141,7 +139,6 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
       saveAs(zipContent, `${folderName}.zip`);
       toast.success("Carpeta digital descargada", { id: 'zip-process' });
     } catch (zipError) {
-      console.error(zipError);
       toast.error("Hubo un problema al comprimir los archivos", { id: 'zip-process' });
     }
   };
@@ -201,13 +198,26 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
           </button>
 
           {hasTechSpecs && (
-            <button 
-              onClick={handleDownloadAllSpecs}
-              className="bg-slate-800 hover:bg-slate-700 text-white font-black py-4 rounded-2xl border border-slate-700 flex items-center justify-center gap-3 transition-all active:scale-[0.98]"
-            >
-              <Layers className="w-5 h-5 text-cyan-500" />
-              <span className="text-sm tracking-tight uppercase">Descargar Fichas Técnicas</span>
-            </button>
+            <div className="flex gap-2 w-full">
+              {/* Botón Principal (Móvil y Desktop) - Abre Pestañas */}
+              <button 
+                onClick={handleOpenSpecsTabs}
+                className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-black py-4 rounded-2xl border border-slate-700 flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+              >
+                <ExternalLink className="w-5 h-5 text-cyan-500" />
+                <span className="text-xs sm:text-sm tracking-tight uppercase">Abrir Fichas</span>
+              </button>
+
+              {/* Botón Secundario (Solo Desktop) - Descarga ZIP */}
+              <button 
+                onClick={handleDownloadZip}
+                className="hidden md:flex flex-1 bg-slate-800 hover:bg-slate-700 text-white font-black py-4 rounded-2xl border border-slate-700 items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                title="Descargar Todo en ZIP (Optimizado para PC)"
+              >
+                <FileArchive className="w-5 h-5 text-cyan-500" />
+                <span className="text-xs sm:text-sm tracking-tight uppercase">Bajar .ZIP</span>
+              </button>
+            </div>
           )}
         </div>
 
