@@ -27,16 +27,16 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
   const [loading, setLoading] = useState(true);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
-  // REDIRECCIÓN DE SEGURIDAD
+  // REDIRECCIÓN DE SEGURIDAD (Hacia el portal de clientes, no al login administrativo)
   useEffect(() => {
     if (!authLoading && !session) {
-      toast.info("Inicia sesión para verificar el documento");
-      navigate('/login', { state: { from: location.pathname + location.search }, replace: true });
+      toast.info("Requiere validación de seguridad corporativa");
+      navigate('/acceso-documento', { state: { from: location.pathname + location.search }, replace: true });
     }
   }, [session, authLoading, navigate, location]);
 
   useEffect(() => {
-    if (!session) return; // Esperar a la autenticación
+    if (!session) return; 
 
     let isMounted = true;
 
@@ -182,7 +182,7 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
     </div>
   );
 
-  if (!session) return null; // Evita parpadeo visual mientras se ejecuta el Navigate a login
+  if (!session) return null; 
 
   if (!quote) return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
