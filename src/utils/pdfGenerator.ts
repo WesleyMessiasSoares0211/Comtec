@@ -35,7 +35,7 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(colorGray[0], colorGray[1], colorGray[2]);
-    doc.text('INDUSTRIAL SOLUTIONS', 14, 25);
+    doc.text('INDUSTRIAL SPA', 14, 25);
 
     // Datos Folio (Con soporte para mostrar Revisiones)
     const fecha = quote.created_at 
