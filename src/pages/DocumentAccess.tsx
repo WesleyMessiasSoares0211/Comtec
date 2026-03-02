@@ -4,7 +4,6 @@ import { supabase } from '../lib/supabase';
 import { Mail, ShieldCheck, Loader2, ArrowRight, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
-// Dominios corporativos internos de la empresa (Siempre permitidos)
 const INTERNAL_DOMAINS = ['comtec.cl', 'comtecindustrial.cl']; 
 
 export default function DocumentAccess() {
@@ -30,35 +29,20 @@ export default function DocumentAccess() {
     setLoading(true);
 
     try {
-      // 1. VALIDACIÓN DE NEGOCIO: ¿Es el dominio interno o el correo exacto de un cliente?
+      // 1. VALIDACIÓN DE DOMINIOS INTERNOS
       let isAllowed = INTERNAL_DOMAINS.includes(domain);
 
+      // 2. VALIDACIÓN RPC (BYPASS DE RLS): Consulta segura a la base de datos
       if (!isAllowed) {
-        // 1.1 Buscar primero en la tabla principal (Titular de la empresa)
-        const { data: clientMatch } = await supabase
-          .from('crm_clients')
-          .select('id')
-          .eq('email_contacto', cleanEmail)
-          .limit(1)
-          .maybeSingle();
+        const { data: isAuthorized, error: rpcError } = await supabase.rpc('check_email_authorized', { 
+          search_email: cleanEmail 
+        });
 
-        if (clientMatch) {
-          isAllowed = true;
-        } else {
-          // 1.2 Si no es titular, buscar en la tabla de contactos asociados
-          const { data: contactMatch, error: contactError } = await supabase
-            .from('crm_client_contacts')
-            .select('id')
-            .eq('email', cleanEmail)
-            .limit(1)
-            .maybeSingle();
-            
-          if (contactMatch && !contactError) {
-            isAllowed = true;
-          }
-        }
+        if (rpcError) throw rpcError;
+        if (isAuthorized) isAllowed = true;
       }
 
+      // Si la base de datos respondió que el correo no existe
       if (!isAllowed) {
         toast.error("Acceso denegado", {
           description: "Este correo no figura como contacto autorizado. Solicite a su ejecutivo comercial ser añadido a la ficha de su empresa."
@@ -67,7 +51,7 @@ export default function DocumentAccess() {
         return;
       }
 
-      // 2. ENVÍO DE MAGIC LINK (Doble verificación por correo)
+      // 3. ENVÍO DE MAGIC LINK (Si pasó la validación)
       const { error } = await supabase.auth.signInWithOtp({
         email: cleanEmail,
         options: {
@@ -82,7 +66,7 @@ export default function DocumentAccess() {
 
     } catch (error: any) {
       console.error("Error al procesar solicitud:", error);
-      toast.error("Error al procesar la solicitud", { description: "Intente nuevamente más tarde." });
+      toast.error("Error de conexión", { description: "No se pudo validar el correo. Intente más tarde." });
     } finally {
       setLoading(false);
     }
@@ -142,7 +126,7 @@ export default function DocumentAccess() {
         <div className="mt-6 flex items-start gap-2 p-3 bg-slate-950/50 rounded-xl border border-slate-800">
            <ShieldAlert className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" />
            <p className="text-[10px] text-slate-500 leading-relaxed">
-             El correo ingresado debe coincidir exactamente con el contacto registrado comercialmente (titular o asociado) en nuestro sistema para recibir el enlace de validación (Magic Link).
+             El correo ingresado debe coincidir con el contacto registrado comercialmente en nuestro sistema para recibir el enlace de validación (Magic Link).
            </p>
         </div>
       </div>
