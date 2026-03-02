@@ -34,20 +34,34 @@ export default function DocumentAccess() {
       let isAllowed = INTERNAL_DOMAINS.includes(domain);
 
       if (!isAllowed) {
-        // Consultar a la base de datos si el correo exacto existe en email_contacto
-        const { data: clientMatch, error: dbError } = await supabase
+        // 1.1 Buscar primero en la tabla principal (Titular de la empresa)
+        const { data: clientMatch } = await supabase
           .from('crm_clients')
           .select('id')
-          .eq('email_contacto', cleanEmail) // Búsqueda exacta en la columna solicitada
+          .eq('email_contacto', cleanEmail)
           .limit(1)
           .maybeSingle();
 
-        if (clientMatch) isAllowed = true;
+        if (clientMatch) {
+          isAllowed = true;
+        } else {
+          // 1.2 Si no es titular, buscar en la tabla de contactos asociados
+          const { data: contactMatch, error: contactError } = await supabase
+            .from('crm_client_contacts')
+            .select('id')
+            .eq('email', cleanEmail)
+            .limit(1)
+            .maybeSingle();
+            
+          if (contactMatch && !contactError) {
+            isAllowed = true;
+          }
+        }
       }
 
       if (!isAllowed) {
         toast.error("Acceso denegado", {
-          description: "Este correo no figura como contacto autorizado en nuestro sistema. Solicite a su ejecutivo ser añadido como contacto de cliente."
+          description: "Este correo no figura como contacto autorizado. Solicite a su ejecutivo comercial ser añadido a la ficha de su empresa."
         });
         setLoading(false);
         return;
@@ -67,7 +81,7 @@ export default function DocumentAccess() {
       toast.success("Enlace de acceso seguro enviado a su correo");
 
     } catch (error: any) {
-      console.error(error);
+      console.error("Error al procesar solicitud:", error);
       toast.error("Error al procesar la solicitud", { description: "Intente nuevamente más tarde." });
     } finally {
       setLoading(false);
@@ -128,7 +142,7 @@ export default function DocumentAccess() {
         <div className="mt-6 flex items-start gap-2 p-3 bg-slate-950/50 rounded-xl border border-slate-800">
            <ShieldAlert className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" />
            <p className="text-[10px] text-slate-500 leading-relaxed">
-             El correo ingresado debe coincidir exactamente con el contacto registrado comercialmente en nuestro sistema para recibir el enlace de validación (Magic Link).
+             El correo ingresado debe coincidir exactamente con el contacto registrado comercialmente (titular o asociado) en nuestro sistema para recibir el enlace de validación (Magic Link).
            </p>
         </div>
       </div>
