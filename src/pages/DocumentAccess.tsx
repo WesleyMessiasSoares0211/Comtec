@@ -130,7 +130,7 @@ export default function DocumentAccess() {
         <div className="mt-6 flex items-start gap-2 p-3 bg-slate-950/50 rounded-xl border border-slate-800">
            <ShieldAlert className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" />
            <p className="text-[10px] text-slate-500 leading-relaxed">
-             El correo ingresado debe coincidir con el contacto registrado comercialmente en nuestro sistema para recibir el enlace de validación (Magic Link).
+             El correo ingresado debe coincidir con el contacto registrado comercialmente en nuestro sistema para recibir el enlace de validación-
            </p>
         </div>
       </div>
