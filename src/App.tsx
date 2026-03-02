@@ -22,7 +22,7 @@ const CommercialAdmin = lazy(() => import('./pages/CommercialAdmin'));
 const SystemConfig = lazy(() => import('./pages/SystemConfig'));
 const VerifyQuote = lazy(() => import('./pages/VerifyQuote'));
 const QuoteDocsViewer = lazy(() => import('./pages/QuoteDocsViewer'));
-const DocumentAccess = lazy(() => import('./pages/DocumentAccess')); // NUEVO COMPONENTE
+const DocumentAccess = lazy(() => import('./pages/DocumentAccess'));
 
 // --- WRAPPERS INTERNOS ---
 function CatalogWrapper() {
@@ -118,9 +118,14 @@ export default function App() {
       if (event === 'SIGNED_IN') {
         const pendingUrl = localStorage.getItem('pending_document_url');
         if (pendingUrl) {
-          // Si venía buscando un documento, lo enviamos allá directamente
           localStorage.removeItem('pending_document_url');
-          navigate(pendingUrl, { replace: true });
+          
+          // Verificamos si la ruta actual es distinta a la esperada.
+          // Si Supabase ya redirigió exitosamente por el emailRedirectTo, omitimos forzar la navegación.
+          const currentPath = window.location.pathname + window.location.search;
+          if (currentPath !== pendingUrl) {
+            navigate(pendingUrl, { replace: true });
+          }
         }
       }
 
