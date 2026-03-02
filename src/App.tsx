@@ -90,6 +90,17 @@ function PublicLayoutWrapper({ session }: any) {
   );
 }
 
+// Layout para Documentos (Sin Header, Sin Footer, Entorno Cerrado)
+function StandaloneDocumentLayout() {
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200">
+      <main className="w-full flex-1">
+        <Outlet />
+      </main>
+    </div>
+  );
+}
+
 // Función auxiliar de navegación global
 const handleGlobalNavigate = (navigate: any, page: string, extraData?: string) => {
   if (page === 'home') navigate('/');
@@ -114,14 +125,12 @@ export default function App() {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       
-      // CAPTURA DE MAGIC LINKS: Cuando el usuario hace clic en el link de su correo
+      // CAPTURA DE MAGIC LINKS
       if (event === 'SIGNED_IN') {
         const pendingUrl = localStorage.getItem('pending_document_url');
         if (pendingUrl) {
           localStorage.removeItem('pending_document_url');
           
-          // Verificamos si la ruta actual es distinta a la esperada.
-          // Si Supabase ya redirigió exitosamente por el emailRedirectTo, omitimos forzar la navegación.
           const currentPath = window.location.pathname + window.location.search;
           if (currentPath !== pendingUrl) {
             navigate(pendingUrl, { replace: true });
@@ -151,6 +160,7 @@ export default function App() {
       <Toaster position="top-right" theme="dark" richColors closeButton />
       <Suspense fallback={<FallbackLoader />}>
         <Routes>
+          {/* Rutas Públicas (Con Navegación) */}
           <Route element={<PublicLayoutWrapper session={session} />}>
             <Route path="/" element={<HomePage onNavigate={(p, e) => handleGlobalNavigate(navigate, p, e)} />} />
             <Route path="/catalog" element={<CatalogWrapper />} />
@@ -159,15 +169,17 @@ export default function App() {
             <Route path="/solutions" element={<SolutionsPage onNavigate={(p) => handleGlobalNavigate(navigate, p)} />} />
             <Route path="/clients" element={<ClientsPage onNavigate={(p) => handleGlobalNavigate(navigate, p)} />} />
             
-            {/* Rutas de Documentos Públicos Seguros */}
-            <Route path="/quote/docs" element={<QuoteDocsViewer />} />
-            <Route path="/verify/:folio" element={<VerifyWrapper />} />
-            
-            {/* Rutas de Autenticación Segregadas */}
             <Route path="/acceso-documento" element={<DocumentAccess />} />
             <Route path="/login" element={<LoginWrapper session={session} />} />
           </Route>
 
+          {/* Rutas de Documentos Públicos Seguros (Entorno Aislado) */}
+          <Route element={<StandaloneDocumentLayout />}>
+            <Route path="/quote/docs" element={<QuoteDocsViewer />} />
+            <Route path="/verify/:folio" element={<VerifyWrapper />} />
+          </Route>
+
+          {/* Rutas Administrativas */}
           <Route path="/admin/*" element={session ? <CommercialAdmin /> : <Navigate to="/login" replace />} />
           <Route path="/system" element={session ? <SystemConfig /> : <Navigate to="/" replace />} />
 
