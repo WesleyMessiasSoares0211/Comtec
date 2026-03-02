@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { Mail, ShieldCheck, Loader2, ArrowRight, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
-const INTERNAL_DOMAINS = ['comtec.cl', 'comtecindustrial.cl']; 
+const INTERNAL_DOMAINS = [ 'comtecindustrial.com']; 
 
 export default function DocumentAccess() {
   const [email, setEmail] = useState('');
