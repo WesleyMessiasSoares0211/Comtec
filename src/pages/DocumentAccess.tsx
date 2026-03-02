@@ -52,10 +52,14 @@ export default function DocumentAccess() {
       }
 
       // 3. ENVÍO DE MAGIC LINK (Si pasó la validación)
+      // Capturamos la URL exacta hacia donde debe volver el usuario
+      const pendingUrl = localStorage.getItem('pending_document_url') || location.state?.from || '/';
+
       const { error } = await supabase.auth.signInWithOtp({
         email: cleanEmail,
         options: {
-          emailRedirectTo: window.location.origin, 
+          // Inyectamos la ruta destino directamente en el Magic Link
+          emailRedirectTo: `${window.location.origin}${pendingUrl}`, 
         }
       });
 
