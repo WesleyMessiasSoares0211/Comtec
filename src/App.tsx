@@ -24,6 +24,7 @@ const VerifyQuote = lazy(() => import('./pages/VerifyQuote'));
 const QuoteDocsViewer = lazy(() => import('./pages/QuoteDocsViewer'));
 
 // --- WRAPPERS INTERNOS ---
+
 function CatalogWrapper() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -42,11 +43,15 @@ function VerifyWrapper() {
   return <VerifyQuote folio={folio} />; 
 }
 
-// NUEVO: Wrapper para recordar la ruta desde donde se envió al usuario al Login
+// CORRECCIÓN CLAVE: Wrapper para Login con memoria de ruta
 function LoginWrapper() {
   const navigate = useNavigate();
   const location = useLocation();
+  
+  // Capturamos la URL exacta desde donde el usuario fue expulsado al login.
+  // Si entró directamente a /login por su cuenta, el fallback será /admin.
   const from = location.state?.from || '/admin';
+
   return <Login onLoginSuccess={() => navigate(from, { replace: true })} />;
 }
 
@@ -102,12 +107,15 @@ export default function App() {
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      // CORRECCIÓN CLAVE: Eliminado el "navigate('/admin')" en 'SIGNED_IN'.
+      // Ahora dejamos que el LoginWrapper sea el que decida la ruta dinámicamente.
+      
       if (event === 'SIGNED_OUT') {
         const currentPath = window.location.pathname;
         if (
           currentPath.startsWith('/admin') || 
           currentPath.startsWith('/system') ||
-          currentPath.startsWith('/quote') ||
+          currentPath.startsWith('/quote/docs') ||
           currentPath.startsWith('/verify')
         ) {
           navigate('/');
@@ -124,6 +132,7 @@ export default function App() {
       <Toaster position="top-right" theme="dark" richColors closeButton />
       <Suspense fallback={<FallbackLoader />}>
         <Routes>
+          {/* RUTAS PÚBLICAS (Con Layout) */}
           <Route element={<PublicLayoutWrapper session={session} />}>
             <Route path="/" element={<HomePage onNavigate={(p, e) => handleGlobalNavigate(navigate, p, e)} />} />
             <Route path="/catalog" element={<CatalogWrapper />} />
@@ -132,16 +141,19 @@ export default function App() {
             <Route path="/solutions" element={<SolutionsPage onNavigate={(p) => handleGlobalNavigate(navigate, p)} />} />
             <Route path="/clients" element={<ClientsPage onNavigate={(p) => handleGlobalNavigate(navigate, p)} />} />
             
+            {/* Rutas de Negocio Públicas (QR y Docs) */}
             <Route path="/quote/docs" element={<QuoteDocsViewer />} />
             <Route path="/verify/:folio" element={<VerifyWrapper />} />
             
-            {/* CORRECCIÓN: Uso del nuevo LoginWrapper */}
+            {/* CORRECCIÓN CLAVE: Uso del LoginWrapper para interceptar el redireccionamiento */}
             <Route path="/login" element={session ? <Navigate to="/admin" replace /> : <LoginWrapper />} />
           </Route>
 
+          {/* RUTAS PRIVADAS (Sin Layout Público) */}
           <Route path="/admin/*" element={session ? <CommercialAdmin /> : <Navigate to="/login" replace />} />
           <Route path="/system" element={session ? <SystemConfig /> : <Navigate to="/" replace />} />
 
+          {/* Fallback 404 */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
