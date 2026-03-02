@@ -4,9 +4,6 @@ import { supabase } from '../lib/supabase';
 import { Mail, ShieldCheck, Loader2, ArrowRight, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
-// Lista negra de dominios genéricos (No se permiten bajo ninguna circunstancia)
-const BANNED_DOMAINS = ['gmail.com', 'hotmail.com', 'yahoo.com', 'outlook.com', 'live.com', 'icloud.com'];
-
 // Dominios corporativos internos de la empresa (Siempre permitidos)
 const INTERNAL_DOMAINS = ['comtec.cl', 'comtecindustrial.cl']; 
 
@@ -28,30 +25,20 @@ export default function DocumentAccess() {
     const cleanEmail = email.toLowerCase().trim();
     const domain = cleanEmail.split('@')[1];
 
-    if (!domain) return toast.error("Ingresa un correo válido");
-
-    // 1. FILTRO RÁPIDO: Bloquear correos genéricos
-    if (BANNED_DOMAINS.includes(domain)) {
-      toast.error("Acceso denegado", { 
-        description: "Por políticas de seguridad, solo se admiten correos corporativos." 
-      });
-      return;
-    }
+    if (!domain) return toast.error("Ingresa un correo electrónico válido");
 
     setLoading(true);
 
     try {
-      // 2. VALIDACIÓN DE NEGOCIO: ¿Es el dominio interno o de un cliente activo?
+      // 1. VALIDACIÓN DE NEGOCIO: ¿Es el dominio interno o el correo exacto de un cliente?
       let isAllowed = INTERNAL_DOMAINS.includes(domain);
 
       if (!isAllowed) {
-        // Consultar a la base de datos si algún cliente activo usa este dominio
-        // NOTA: Requiere que la tabla crm_clients tenga un campo de email de contacto,
-        // o puedes crear una tabla 'allowed_client_domains'.
+        // Consultar a la base de datos si el correo exacto existe en email_contacto
         const { data: clientMatch, error: dbError } = await supabase
           .from('crm_clients')
           .select('id')
-          .ilike('email', `%@${domain}`) // Busca si algún cliente tiene ese dominio
+          .eq('email_contacto', cleanEmail) // Búsqueda exacta en la columna solicitada
           .limit(1)
           .maybeSingle();
 
@@ -59,14 +46,14 @@ export default function DocumentAccess() {
       }
 
       if (!isAllowed) {
-        toast.error("Dominio no autorizado", {
-          description: "Su empresa no figura como cliente activo en nuestro sistema. Contacte a su ejecutivo comercial."
+        toast.error("Acceso denegado", {
+          description: "Este correo no figura como contacto autorizado en nuestro sistema. Solicite a su ejecutivo ser añadido como contacto de cliente."
         });
         setLoading(false);
         return;
       }
 
-      // 3. ENVÍO DE MAGIC LINK (Solo si pasó todas las barreras)
+      // 2. ENVÍO DE MAGIC LINK (Doble verificación por correo)
       const { error } = await supabase.auth.signInWithOtp({
         email: cleanEmail,
         options: {
@@ -77,7 +64,7 @@ export default function DocumentAccess() {
       if (error) throw error;
 
       setSent(true);
-      toast.success("Enlace de acceso seguro enviado a tu correo corporativo");
+      toast.success("Enlace de acceso seguro enviado a su correo");
 
     } catch (error: any) {
       console.error(error);
@@ -86,9 +73,6 @@ export default function DocumentAccess() {
       setLoading(false);
     }
   };
-
-  // ... (El resto del render de la UI se mantiene igual que en mi respuesta anterior)
-  // [Render de la vista "Sent" y el "Formulario" con estética Slate-950/Cyan]
   
   if (sent) {
     return (
@@ -99,7 +83,7 @@ export default function DocumentAccess() {
         <h2 className="text-2xl font-black text-white mb-2">Verifica tu Bandeja de Entrada</h2>
         <p className="text-slate-400 max-w-md">
           Hemos enviado un enlace de acceso seguro a <span className="text-cyan-400 font-bold">{email}</span>. 
-          Haz clic en el enlace desde tu correo para abrir el documento.
+          Haz clic en el enlace desde tu correo para validar tu identidad y abrir el documento.
         </p>
       </div>
     );
@@ -113,20 +97,20 @@ export default function DocumentAccess() {
             <ShieldCheck className="w-8 h-8 text-cyan-500" />
           </div>
         </div>
-        <h2 className="text-2xl font-black text-white text-center mb-2">Acceso a Documento</h2>
+        <h2 className="text-2xl font-black text-white text-center mb-2">Acceso Seguro</h2>
         <p className="text-slate-400 text-sm text-center mb-8">
-          Por razones de seguridad industrial, el acceso requiere validación mediante correo corporativo activo.
+          Por políticas de confidencialidad, el acceso a las carpetas digitales requiere validación de identidad.
         </p>
 
         <form onSubmit={handleRequestAccess} className="space-y-4">
           <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 block">Correo Corporativo</label>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 block">Correo Electrónico Registrado</label>
             <input 
               type="email" 
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="tu.nombre@empresa.com"
+              placeholder="correo@ejemplo.com"
               className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-white focus:ring-2 focus:ring-cyan-500/50 outline-none transition-all"
             />
           </div>
@@ -136,15 +120,15 @@ export default function DocumentAccess() {
             className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-black py-4 rounded-xl shadow-lg shadow-cyan-900/20 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50"
           >
             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
-              <>Solicitar Acceso Seguro <ArrowRight className="w-4 h-4" /></>
+              <>Solicitar Enlace de Acceso <ArrowRight className="w-4 h-4" /></>
             )}
           </button>
         </form>
         
         <div className="mt-6 flex items-start gap-2 p-3 bg-slate-950/50 rounded-xl border border-slate-800">
-           <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+           <ShieldAlert className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" />
            <p className="text-[10px] text-slate-500 leading-relaxed">
-             No se admiten correos genéricos (Gmail, Hotmail, etc.). El dominio ingresado debe coincidir con el registro comercial de un cliente activo.
+             El correo ingresado debe coincidir exactamente con el contacto registrado comercialmente en nuestro sistema para recibir el enlace de validación (Magic Link).
            </p>
         </div>
       </div>
