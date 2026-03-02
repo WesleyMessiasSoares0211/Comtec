@@ -21,16 +21,16 @@ export default function QuoteDocsViewer() {
   const [displayTitle, setDisplayTitle] = useState('');
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
-  // REDIRECCIÓN DE SEGURIDAD
+  // REDIRECCIÓN DE SEGURIDAD (Hacia el portal de clientes, no al login administrativo)
   useEffect(() => {
     if (!authLoading && !session) {
-      toast.info("Inicia sesión para acceder a la carpeta digital");
-      navigate('/login', { state: { from: location.pathname + location.search }, replace: true });
+      toast.info("Requiere validación de seguridad");
+      navigate('/acceso-documento', { state: { from: location.pathname + location.search }, replace: true });
     }
   }, [session, authLoading, navigate, location]);
 
   useEffect(() => {
-    if (!session) return; // Evitar consulta si no hay sesión
+    if (!session) return; 
 
     let isMounted = true;
 
@@ -48,7 +48,6 @@ export default function QuoteDocsViewer() {
 
       try {
         let resultData = null;
-        // CORRECCIÓN: Traemos la cotización COMPLETA junto al cliente para el PDF
         const query = supabase.from('crm_quotes').select(`*, crm_clients (*)`);
 
         if (idParam) {
@@ -89,7 +88,6 @@ export default function QuoteDocsViewer() {
     return () => { isMounted = false; };
   }, [searchParams, session]);
 
-  // NUEVO: Funcionalidad de descarga de PDF Oficial en la vista de Docs
   const handleDownloadOfficialPDF = async () => {
     if (!fullQuote || !fullQuote.crm_clients) return;
     
