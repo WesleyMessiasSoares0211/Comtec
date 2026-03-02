@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams, Link, useNavigate, useLocation } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { 
-  ShieldCheck, FileText, AlertTriangle, Loader2, ChevronRight,
+  ShieldCheck, FileText, AlertTriangle, Loader2,
   Building2, Layers, Printer, ExternalLink, FileArchive
 } from 'lucide-react';
 import { Quote } from '../types/quotes';
@@ -27,7 +27,6 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
   const [loading, setLoading] = useState(true);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
-  // REDIRECCIÓN DE SEGURIDAD (Hacia el portal de clientes, no al login administrativo)
   useEffect(() => {
     if (!authLoading && !session) {
       toast.info("Requiere validación de seguridad corporativa");
@@ -191,12 +190,9 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
           <AlertTriangle className="w-8 h-8 text-red-500" />
         </div>
         <h2 className="text-white font-bold text-xl mb-2">Documento no Registrado</h2>
-        <p className="text-slate-400 text-sm mb-8">
+        <p className="text-slate-400 text-sm">
           El documento con identificador no ha sido emitido o se encuentra expirado en nuestros registros.
         </p>
-        <Link to="/" className="inline-flex items-center gap-2 text-cyan-500 font-bold hover:text-cyan-400 transition-colors uppercase text-xs tracking-tighter">
-          Volver al Portal <ChevronRight className="w-4 h-4" />
-        </Link>
       </div>
     </div>
   );
@@ -320,7 +316,7 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
         </div>
 
         <div className="text-center px-4">
-          <p className="text-slate-600 text-[10px] font-black uppercase tracking-[0.3em] mb-4">Comtec Industrial Solutions</p>
+          <p className="text-slate-600 text-[10px] font-black uppercase tracking-[0.3em] mb-4">Comtec Industrial Spa</p>
           <p className="text-slate-500 text-[11px] leading-relaxed italic">
             "Este certificado digital confirma la autenticidad de la oferta comercial en nuestros registros."
           </p>
