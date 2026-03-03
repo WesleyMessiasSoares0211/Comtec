@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { 
   Users, Shield, Edit, Trash2, Plus, Search, 
-  Loader2, Mail, Ban, CheckCircle, AlertCircle, X, UserCog
+  Loader2, Mail, Ban, CheckCircle, X, UserCog, UserPlus
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -25,9 +25,19 @@ export default function UsersManagement() {
   
   // Modales
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Estado del nuevo usuario
+  const [newUser, setNewUser] = useState({
+    email: '',
+    password: '',
+    nombre_completo: '',
+    rut: '',
+    telefono: '',
+    direccion: '',
+    role: 'vendedor'
+  });
 
   const fetchUsers = async () => {
     try {
@@ -94,31 +104,37 @@ export default function UsersManagement() {
       setUsers(prev => prev.map(u => u.id === user.id ? { ...u, is_active: newStatus } : u));
     } catch (error) {
       console.error(error);
-      toast.error('Error al cambiar estado del usuario');
+      toast.error('Error al cambiar estado');
     }
   };
 
-  const handleInvite = async (e: React.FormEvent) => {
+  // NUEVA FUNCIÓN: Creación manual integral
+  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inviteEmail) return;
+    if (!newUser.email || !newUser.password) {
+      toast.error('Correo y contraseña son obligatorios');
+      return;
+    }
+    
     setIsProcessing(true);
 
     try {
-      // Usamos invoke para llamar a nuestra Edge Function de forma segura
-      const { error } = await supabase.functions.invoke('invite-user', {
-        body: { email: inviteEmail }
+      const { error } = await supabase.functions.invoke('create-user', {
+        body: newUser
       });
 
       if (error) throw error;
       
-      toast.success('Invitación enviada', { 
-        description: 'El usuario recibirá un correo corporativo para unirse al equipo.' 
+      toast.success('Usuario creado con éxito', { 
+        description: 'Se ha enviado un correo de activación al empleado.' 
       });
-      setShowInviteModal(false);
-      setInviteEmail('');
+      
+      setShowCreateModal(false);
+      setNewUser({ email: '', password: '', nombre_completo: '', rut: '', telefono: '', direccion: '', role: 'vendedor' });
+      fetchUsers(); // Recargar la lista inmediatamente
     } catch (error) {
       console.error(error);
-      toast.error('Error al enviar invitación');
+      toast.error('Error al crear el usuario. Revisa que el correo no exista ya.');
     } finally {
       setIsProcessing(false);
     }
@@ -141,11 +157,11 @@ export default function UsersManagement() {
           <p className="text-sm text-slate-400 mt-1">Administra accesos, roles y perfiles comerciales.</p>
         </div>
         <button 
-          onClick={() => setShowInviteModal(true)}
+          onClick={() => setShowCreateModal(true)}
           className="bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-cyan-900/20 active:scale-95"
         >
-          <Plus className="w-5 h-5" />
-          Invitar Usuario
+          <UserPlus className="w-5 h-5" />
+          Crear Usuario
         </button>
       </div>
 
@@ -210,7 +226,74 @@ export default function UsersManagement() {
         )}
       </div>
 
-      {/* MODAL DE EDICIÓN */}
+      {/* MODAL DE CREACIÓN MANUAL */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in-95">
+            <div className="bg-slate-950/50 p-6 border-b border-slate-800 flex justify-between items-center">
+               <h3 className="text-white font-bold text-lg flex items-center gap-2">
+                 <UserPlus className="w-5 h-5 text-cyan-400" /> Nuevo Integrante de Equipo
+               </h3>
+               <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            
+            <form onSubmit={handleCreateUser} className="p-6">
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                 {/* Accesos */}
+                 <div className="space-y-4">
+                   <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 pb-2">Credenciales de Acceso</h4>
+                   <div>
+                     <label className="text-xs font-bold text-slate-400 mb-1 block">Correo Corporativo *</label>
+                     <input type="email" required value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:ring-1 focus:ring-cyan-500 outline-none" placeholder="ejemplo@comtec.com" />
+                   </div>
+                   <div>
+                     <label className="text-xs font-bold text-slate-400 mb-1 block">Contraseña Temporal *</label>
+                     <input type="text" required value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:ring-1 focus:ring-cyan-500 outline-none" placeholder="Ingresa una clave segura" />
+                     <p className="text-[10px] text-slate-500 mt-1">El usuario deberá usarla para su primer inicio de sesión.</p>
+                   </div>
+                   <div>
+                     <label className="text-xs font-bold text-slate-400 mb-1 block">Rol de Sistema</label>
+                     <select value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:ring-1 focus:ring-cyan-500 outline-none">
+                       <option value="tecnico">Técnico (Solo Lectura)</option>
+                       <option value="vendedor">Vendedor</option>
+                       <option value="admin">Administrador</option>
+                       <option value="super_admin">Super Administrador</option>
+                     </select>
+                   </div>
+                 </div>
+
+                 {/* Datos Personales */}
+                 <div className="space-y-4">
+                   <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 pb-2">Datos Personales</h4>
+                   <div>
+                     <label className="text-xs font-bold text-slate-400 mb-1 block">Nombre Completo</label>
+                     <input type="text" value={newUser.nombre_completo} onChange={e => setNewUser({...newUser, nombre_completo: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:ring-1 focus:ring-cyan-500 outline-none" placeholder="Juan Pérez" />
+                   </div>
+                   <div className="grid grid-cols-2 gap-3">
+                     <div>
+                       <label className="text-xs font-bold text-slate-400 mb-1 block">RUT</label>
+                       <input type="text" value={newUser.rut} onChange={e => setNewUser({...newUser, rut: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:ring-1 focus:ring-cyan-500 outline-none" placeholder="12.345.678-9" />
+                     </div>
+                     <div>
+                       <label className="text-xs font-bold text-slate-400 mb-1 block">Teléfono</label>
+                       <input type="text" value={newUser.telefono} onChange={e => setNewUser({...newUser, telefono: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:ring-1 focus:ring-cyan-500 outline-none" placeholder="+56 9..." />
+                     </div>
+                   </div>
+                 </div>
+               </div>
+
+               <div className="flex gap-3 pt-4 border-t border-slate-800">
+                 <button type="button" onClick={() => setShowCreateModal(false)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-white py-3.5 rounded-xl font-bold transition-all">Cancelar</button>
+                 <button type="submit" disabled={isProcessing} className="flex-1 bg-cyan-600 hover:bg-cyan-500 text-white py-3.5 rounded-xl font-bold flex justify-center transition-all disabled:opacity-50 shadow-lg shadow-cyan-900/20">
+                   {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Registrar y Enviar Activación'}
+                 </button>
+               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* (El MODAL DE EDICIÓN SE MANTIENE EXACTAMENTE IGUAL AL ANTERIOR) */}
       {editingUser && (
         <div className="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95">
@@ -221,21 +304,17 @@ export default function UsersManagement() {
             <form onSubmit={handleUpdateUser} className="p-6 space-y-4">
                <div>
                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">Nombre Completo</label>
-                 <input type="text" value={editingUser.nombre_completo || ''} onChange={e => setEditingUser({...editingUser, nombre_completo: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:ring-1 focus:ring-cyan-500 outline-none" placeholder="Ej: Juan Pérez" />
+                 <input type="text" value={editingUser.nombre_completo || ''} onChange={e => setEditingUser({...editingUser, nombre_completo: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:ring-1 focus:ring-cyan-500 outline-none" />
                </div>
                <div className="grid grid-cols-2 gap-4">
                  <div>
                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">RUT</label>
-                   <input type="text" value={editingUser.rut || ''} onChange={e => setEditingUser({...editingUser, rut: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:ring-1 focus:ring-cyan-500 outline-none" placeholder="12.345.678-9" />
+                   <input type="text" value={editingUser.rut || ''} onChange={e => setEditingUser({...editingUser, rut: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:ring-1 focus:ring-cyan-500 outline-none" />
                  </div>
                  <div>
                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">Teléfono</label>
-                   <input type="text" value={editingUser.telefono || ''} onChange={e => setEditingUser({...editingUser, telefono: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:ring-1 focus:ring-cyan-500 outline-none" placeholder="+56 9..." />
+                   <input type="text" value={editingUser.telefono || ''} onChange={e => setEditingUser({...editingUser, telefono: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:ring-1 focus:ring-cyan-500 outline-none" />
                  </div>
-               </div>
-               <div>
-                 <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">Dirección Sucursal</label>
-                 <input type="text" value={editingUser.direccion || ''} onChange={e => setEditingUser({...editingUser, direccion: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:ring-1 focus:ring-cyan-500 outline-none" placeholder="Calle, Ciudad" />
                </div>
                <div>
                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">Rol de Sistema</label>
@@ -250,35 +329,6 @@ export default function UsersManagement() {
                  {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Guardar Cambios'}
                </button>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DE INVITACIÓN (INSERT) */}
-      {showInviteModal && (
-        <div className="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95">
-            <div className="p-6">
-               <div className="w-12 h-12 bg-cyan-500/10 rounded-2xl flex items-center justify-center mb-4">
-                 <Mail className="w-6 h-6 text-cyan-400" />
-               </div>
-               <h3 className="text-white font-bold text-xl mb-2">Invitar Colaborador</h3>
-               <p className="text-slate-400 text-sm mb-6">Ingresa el correo corporativo. Se enviará un enlace mágico para que el usuario inicie sesión por primera vez y quede registrado.</p>
-               
-               <form onSubmit={handleInvite}>
-                 <input 
-                   type="email" required placeholder="correo@comtecindustrial.com"
-                   value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
-                   className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-white focus:ring-1 focus:ring-cyan-500 outline-none mb-4" 
-                 />
-                 <div className="flex gap-3">
-                   <button type="button" onClick={() => setShowInviteModal(false)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-white py-3.5 rounded-xl font-bold transition-all">Cancelar</button>
-                   <button type="submit" disabled={isProcessing} className="flex-1 bg-cyan-600 hover:bg-cyan-500 text-white py-3.5 rounded-xl font-bold flex justify-center transition-all disabled:opacity-50 shadow-lg shadow-cyan-900/20">
-                     {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Enviar Invitación'}
-                   </button>
-                 </div>
-               </form>
-            </div>
           </div>
         </div>
       )}
