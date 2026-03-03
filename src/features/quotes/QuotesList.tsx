@@ -26,6 +26,7 @@ interface QuoteWithClient {
   terms?: string;
   validity_days?: number;
   version?: number;
+  has_new_activity?: boolean; // NUEVO: Estado de alerta
   client: Client;
 }
 
@@ -42,47 +43,38 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Estados de Paginación y Acción
   const [page, setPage] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   
-  // Estado para el Modal de Rastreo (Telemetría)
   const [trackingQuote, setTrackingQuote] = useState<QuoteWithClient | null>(null);
 
-  // Reiniciar a página 1 si cambian los filtros
   useEffect(() => {
     setPage(1);
   }, [searchTerm, selectedClient]);
 
-  // Cargar datos cuando cambia página o filtros
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchQuotes();
-    }, 400); // Un poco más de delay para no saturar búsqueda mientras escribes
+    }, 400); 
     return () => clearTimeout(timer);
   }, [page, searchTerm, selectedClient]);
 
   const fetchQuotes = async () => {
     try {
       setLoading(true);
-      
       const from = (page - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
 
       let query;
 
       if (searchTerm) {
-        // --- MODO BÚSQUEDA INTELIGENTE (RPC) ---
-        // Usa la función SQL para buscar en Cliente, JSON de productos, etc.
         query = supabase
           .rpc('search_quotes', { term: searchTerm })
           .select(`*, client:crm_clients (*)`, { count: 'exact' })
           .range(from, to);
-          // Nota: El orden ya viene definido en la función SQL
       } else {
-        // --- MODO ESTÁNDAR ---
         query = supabase
           .from('crm_quotes')
           .select(`*, client:crm_clients (*)`, { count: 'exact' })
@@ -90,8 +82,6 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
           .range(from, to);
       }
 
-      // Filtro Adicional por Cliente (Selector Superior)
-      // Esto funciona incluso sobre el RPC gracias a que retorna SETOF crm_quotes
       if (selectedClient) {
         query = query.eq('client_id', selectedClient.id);
       }
@@ -108,6 +98,23 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
       toast.error('Error cargando cotizaciones');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // NUEVO: Abre el rastreo y apaga la alerta visual de forma optimista
+  const handleOpenTracking = async (quote: QuoteWithClient) => {
+    setTrackingQuote(quote);
+    
+    if (quote.has_new_activity) {
+      // 1. Apagado instantáneo en la UI (Optimista)
+      setQuotes(prev => prev.map(q => q.id === quote.id ? { ...q, has_new_activity: false } : q));
+      
+      // 2. Apagado silencioso en Base de Datos
+      try {
+        await supabase.from('crm_quotes').update({ has_new_activity: false }).eq('id', quote.id);
+      } catch (err) {
+        console.error("No se pudo limpiar la alerta de actividad", err);
+      }
     }
   };
 
@@ -250,12 +257,24 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
                         <p className="text-cyan-400 font-mono font-bold">${(quote.total || quote.total_bruto).toLocaleString('es-CL')}</p>
                      </div>
                      
+                     {/* NUEVO: Botón de Rastreo con Alerta Dinámica */}
                      <button 
-                       onClick={() => setTrackingQuote(quote)}
-                       className="p-2 bg-slate-800 hover:bg-indigo-600/20 hover:text-indigo-400 text-slate-400 border border-slate-700 hover:border-indigo-500/50 rounded-lg transition-all"
+                       onClick={() => handleOpenTracking(quote)}
+                       className={`p-2 rounded-lg transition-all border shadow-md relative ${
+                         quote.has_new_activity 
+                         ? 'bg-orange-500/20 text-orange-400 border-orange-500/50 hover:bg-orange-500/30 shadow-orange-500/20' 
+                         : 'bg-slate-800 hover:bg-indigo-600/20 hover:text-indigo-400 text-slate-400 border-slate-700 hover:border-indigo-500/50'
+                       }`}
                        title="Rastreo de Actividad"
                      >
-                       <Activity className="w-4 h-4" />
+                       <Activity className={`w-4 h-4 ${quote.has_new_activity ? 'animate-pulse' : ''}`} />
+                       {/* Círculo indicador extra para mayor visibilidad */}
+                       {quote.has_new_activity && (
+                         <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                           <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-orange-500"></span>
+                         </span>
+                       )}
                      </button>
                      
                      {onCreateRevision && (
