@@ -7,7 +7,6 @@ import { useAuth } from '../hooks/useAuth';
 import { toast } from 'sonner';
 import QRCode from 'qrcode';
 import { generateQuotePDF } from '../utils/pdfGenerator';
-// --- NUEVO: Importación del servicio de telemetría ---
 import { logQuoteInteraction } from '../services/telemetryService';
 
 export default function QuoteDocsViewer() {
@@ -68,7 +67,6 @@ export default function QuoteDocsViewer() {
           setFullQuote(resultData);
           setDisplayTitle(`${resultData.folio}${resultData.version > 1 ? ` (Rev. ${resultData.version})` : ''}`);
           
-          // --- NUEVO: Telemetría de Apertura (Portal Viewer) ---
           logQuoteInteraction(resultData.id, 'view_portal', session?.user?.email, { folio: resultData.folio });
 
           if (resultData && resultData.items) {
@@ -95,7 +93,6 @@ export default function QuoteDocsViewer() {
   const handleDownloadOfficialPDF = async () => {
     if (!fullQuote || !fullQuote.crm_clients) return;
     
-    // --- NUEVO: Telemetría de Descarga PDF Oficial ---
     logQuoteInteraction(fullQuote.id, 'download_official_pdf', session?.user?.email);
 
     setIsGeneratingPdf(true);
@@ -193,7 +190,6 @@ export default function QuoteDocsViewer() {
                     </div>
                   </div>
                   
-                  {/* --- NUEVO: Evento onClick en la etiqueta de descarga individual --- */}
                   <a 
                     href={item.datasheet_url || item.technical_spec_url} 
                     target="_blank" 
