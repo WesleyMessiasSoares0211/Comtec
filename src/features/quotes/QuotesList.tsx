@@ -3,13 +3,14 @@ import { supabase } from '../../lib/supabase';
 import { 
   FileText, Calendar, User, Search, 
   AlertCircle, Loader2, Download, CopyPlus,
-  ChevronLeft, ChevronRight, ChevronDown
+  ChevronLeft, ChevronRight, ChevronDown, Activity
 } from 'lucide-react';
 import { Client } from '../../types/client';
 import { toast } from 'sonner';
 import { generateQuotePDF } from '../../utils/pdfGenerator';
 import QRCode from 'qrcode';
 import { quoteService } from '../../services/quoteService';
+import QuoteTelemetryModal from './QuoteTelemetryModal';
 
 interface QuoteWithClient {
   id: string;
@@ -46,6 +47,9 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
   const [totalItems, setTotalItems] = useState(0);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  
+  // Estado para el Modal de Rastreo (Telemetría)
+  const [trackingQuote, setTrackingQuote] = useState<QuoteWithClient | null>(null);
 
   // Reiniciar a página 1 si cambian los filtros
   useEffect(() => {
@@ -246,6 +250,14 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
                         <p className="text-cyan-400 font-mono font-bold">${(quote.total || quote.total_bruto).toLocaleString('es-CL')}</p>
                      </div>
                      
+                     <button 
+                       onClick={() => setTrackingQuote(quote)}
+                       className="p-2 bg-slate-800 hover:bg-indigo-600/20 hover:text-indigo-400 text-slate-400 border border-slate-700 hover:border-indigo-500/50 rounded-lg transition-all"
+                       title="Rastreo de Actividad"
+                     >
+                       <Activity className="w-4 h-4" />
+                     </button>
+                     
                      {onCreateRevision && (
                        <button
                          onClick={() => onCreateRevision(quote)}
@@ -294,6 +306,16 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
              <ChevronRight className="w-4 h-4 text-slate-300" />
            </button>
          </div>
+       )}
+
+       {/* MODAL DE RASTREO (TELEMETRÍA) */}
+       {trackingQuote && (
+         <QuoteTelemetryModal
+           quoteId={trackingQuote.id}
+           folio={trackingQuote.folio}
+           clientName={trackingQuote.client?.razon_social || 'Cliente no especificado'}
+           onClose={() => setTrackingQuote(null)}
+         />
        )}
     </div>
   );
