@@ -32,3 +32,13 @@ export interface Quote {
     rut: string;
   };
 }
+
+export interface QuoteTelemetry {
+  id: string;
+  quote_id: string;
+  action_type: 'view_portal' | 'download_official_pdf' | 'open_single_spec' | 'open_multiple_specs' | 'download_zip_specs';
+  client_email: string;
+  user_agent: string;
+  metadata: any;
+  created_at: string;
+}
