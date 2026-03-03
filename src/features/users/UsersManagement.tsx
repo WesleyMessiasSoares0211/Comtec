@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { 
   Users, Shield, Edit, Trash2, Plus, Search, 
-  Loader2, Mail, Ban, CheckCircle, AlertCircle, X 
+  Loader2, Mail, Ban, CheckCircle, AlertCircle, X, UserCog
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -104,7 +104,6 @@ export default function UsersManagement() {
     setIsProcessing(true);
 
     try {
-      // Solución de INSERT seguro: Se envía Magic Link, Supabase crea el usuario al hacer clic.
       const { error } = await supabase.auth.signInWithOtp({ email: inviteEmail });
       if (error) throw error;
       
@@ -129,12 +128,11 @@ export default function UsersManagement() {
 
   return (
     <div className="space-y-6">
-      {/* HEADER & ACTIONS */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900/50 p-6 rounded-3xl border border-slate-800">
         <div>
           <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-3">
-            <Users className="w-6 h-6 text-cyan-500" />
-            Gestión de Equipo
+            <UserCog className="w-6 h-6 text-cyan-500" />
+            Usuarios y Equipo
           </h2>
           <p className="text-sm text-slate-400 mt-1">Administra accesos, roles y perfiles comerciales.</p>
         </div>
@@ -147,7 +145,6 @@ export default function UsersManagement() {
         </button>
       </div>
 
-      {/* SEARCH BAR */}
       <div className="relative">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
         <input 
@@ -159,7 +156,6 @@ export default function UsersManagement() {
         />
       </div>
 
-      {/* USER LIST */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {loading ? (
           <div className="col-span-full flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-cyan-500" /></div>
@@ -181,7 +177,6 @@ export default function UsersManagement() {
                   </div>
                 </div>
                 
-                {/* Actions */}
                 <div className="flex gap-2">
                   <button onClick={() => setEditingUser(user)} className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors" title="Editar Perfil">
                     <Edit className="w-4 h-4" />
