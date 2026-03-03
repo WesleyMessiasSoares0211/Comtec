@@ -104,11 +104,15 @@ export default function UsersManagement() {
     setIsProcessing(true);
 
     try {
-      const { error } = await supabase.auth.signInWithOtp({ email: inviteEmail });
+      // Usamos invoke para llamar a nuestra Edge Function de forma segura
+      const { error } = await supabase.functions.invoke('invite-user', {
+        body: { email: inviteEmail }
+      });
+
       if (error) throw error;
       
       toast.success('Invitación enviada', { 
-        description: 'El usuario aparecerá en la lista cuando inicie sesión por primera vez.' 
+        description: 'El usuario recibirá un correo corporativo para unirse al equipo.' 
       });
       setShowInviteModal(false);
       setInviteEmail('');
