@@ -146,8 +146,8 @@ export default function QuoteTelemetryModal({ quoteId, folio, clientName, onClos
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-200" onClick={onClose}>
       <div className="bg-slate-900 border border-slate-800 w-full max-w-4xl max-h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
         
-        {/* HEADER */}
-        <div className="p-6 border-b border-slate-800 flex justify-between items-start bg-gradient-to-r from-slate-950/80 to-slate-900/80">
+        {/* HEADER (con shrink-0) */}
+        <div className="shrink-0 p-6 border-b border-slate-800 flex justify-between items-start bg-gradient-to-r from-slate-950/80 to-slate-900/80">
           <div className="flex gap-4">
             <div className="p-3 bg-cyan-500/10 border border-cyan-500/20 rounded-2xl h-fit shadow-lg shadow-cyan-500/10">
               <BarChart3 className="w-6 h-6 text-cyan-400" />
@@ -165,8 +165,8 @@ export default function QuoteTelemetryModal({ quoteId, folio, clientName, onClos
           </button>
         </div>
 
-        {/* MÉTRICAS (KPIs) */}
-        <div className="grid grid-cols-3 gap-3 p-4 md:px-8 bg-slate-900/50 border-b border-slate-800">
+        {/* MÉTRICAS (KPIs) (con shrink-0) */}
+        <div className="shrink-0 grid grid-cols-3 gap-3 p-4 md:px-8 bg-slate-900/50 border-b border-slate-800">
           <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800/80 flex items-center gap-4">
             <div className="p-2 bg-blue-500/10 rounded-lg text-blue-400"><Eye className="w-5 h-5" /></div>
             <div><p className="text-[10px] text-slate-500 uppercase tracking-wider font-black mb-1">Total Vistas</p><p className="text-2xl font-black text-white leading-none">{stats.views}</p></div>
@@ -181,8 +181,8 @@ export default function QuoteTelemetryModal({ quoteId, folio, clientName, onClos
           </div>
         </div>
 
-        {/* PESTAÑAS DE FILTRO */}
-        <div className="px-4 md:px-8 py-3 bg-slate-950 flex gap-2 overflow-x-auto no-scrollbar border-b border-slate-800">
+        {/* PESTAÑAS DE FILTRO (con shrink-0) */}
+        <div className="shrink-0 px-4 md:px-8 py-3 bg-slate-950 flex gap-2 overflow-x-auto no-scrollbar border-b border-slate-800">
           <Filter className="w-4 h-4 text-slate-500 my-auto mr-2 shrink-0" />
           {[
             { id: 'ALL', label: 'Historial Completo' },
@@ -193,7 +193,7 @@ export default function QuoteTelemetryModal({ quoteId, folio, clientName, onClos
             <button
               key={tab.id}
               onClick={() => setFilter(tab.id as FilterType)}
-              className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-all whitespace-nowrap border ${
+              className={`shrink-0 px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-all whitespace-nowrap border ${
                 filter === tab.id 
                 ? 'bg-cyan-600 text-white border-cyan-400 shadow-lg shadow-cyan-900/40' 
                 : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
@@ -204,7 +204,7 @@ export default function QuoteTelemetryModal({ quoteId, folio, clientName, onClos
           ))}
         </div>
 
-        {/* TIMELINE CENTRALIZADO */}
+        {/* TIMELINE CENTRALIZADO (con flex-1) */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar bg-slate-950/30">
           {loading ? (
             <div className="flex flex-col items-center justify-center h-40 text-slate-500">
@@ -252,7 +252,7 @@ export default function QuoteTelemetryModal({ quoteId, folio, clientName, onClos
                       
                       {/* Identidad de Usuario */}
                       <div className="flex items-center gap-3 bg-slate-950/50 p-3 rounded-xl border border-slate-800/50 mb-4">
-                        <div className="bg-slate-800 p-2 rounded-lg">
+                        <div className="bg-slate-800 p-2 rounded-lg shrink-0">
                           <Mail className="w-4 h-4 text-slate-400" />
                         </div>
                         <div className="min-w-0">
