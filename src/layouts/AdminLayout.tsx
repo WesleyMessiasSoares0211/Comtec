@@ -4,8 +4,9 @@ import {
   LayoutDashboard, Users, Package, FileText,
   Settings as SettingsIcon, LogOut, ChevronRight,
   Wrench, Boxes, ShieldAlert, Menu, Bell, Search,
-  UserCircle
+  UserCircle, UserCog
 } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth'; // IMPORTANTE: Hook de autenticación
 
 interface AdminLayoutProps {
   children: ReactNode;
@@ -16,6 +17,7 @@ interface AdminLayoutProps {
 export default function AdminLayout({ children, activeTab, onTabChange }: AdminLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const { isSuperAdmin, isAdmin } = useAuth(); // NUEVO: Extraemos permisos
 
   useEffect(() => {
     const handleResize = () => {
@@ -50,7 +52,8 @@ export default function AdminLayout({ children, activeTab, onTabChange }: AdminL
     'dashboard': 'Panel de Control',
     'clientes': 'Directorio',
     'productos': 'Catálogo',
-    'ofertas': 'Cotizador'
+    'ofertas': 'Cotizador',
+    'usuarios': 'Equipo' // NUEVO
   };
 
   return (
@@ -119,7 +122,9 @@ export default function AdminLayout({ children, activeTab, onTabChange }: AdminL
               </div>
               <div className="hidden xl:block text-left">
                 <p className="text-xs font-bold text-slate-200 truncate max-w-[120px]">{userEmail || 'Usuario'}</p>
-                <p className="text-[10px] text-slate-500 uppercase tracking-widest">Administrador</p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-widest">
+                  {isSuperAdmin ? 'Super Admin' : isAdmin ? 'Admin' : 'Personal'}
+                </p>
               </div>
             </div>
           </div>
@@ -153,6 +158,16 @@ export default function AdminLayout({ children, activeTab, onTabChange }: AdminL
               <NavItem icon={<FileText className="w-5 h-5" />} label="Gestión de Ofertas" active={activeTab === 'ofertas'} onClick={() => handleTabClick('ofertas')} />
             </nav>
           </div>
+
+          {/* NUEVO: BLOQUE DE ADMINISTRACIÓN */}
+          {(isSuperAdmin || isAdmin) && (
+            <div className="mb-6">
+              <h3 className="px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Administración</h3>
+              <nav className="space-y-1">
+                <NavItem icon={<UserCog className="w-5 h-5" />} label="Usuarios y Equipo" active={activeTab === 'usuarios'} onClick={() => handleTabClick('usuarios')} />
+              </nav>
+            </div>
+          )}
 
           <div className="mb-6">
             <h3 className="px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-2">
