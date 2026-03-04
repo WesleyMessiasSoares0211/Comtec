@@ -146,17 +146,6 @@ export default function UsersManagement() {
       setIsProcessing(false);
     }
   };
-      
-      setShowCreateModal(false);
-      setNewUser({ email: '', password: '', nombre_completo: '', rut: '', telefono: '', direccion: '', role: 'vendedor' });
-      fetchUsers(); // Recargar la lista inmediatamente
-    } catch (error) {
-      console.error(error);
-      toast.error('Error al crear el usuario. Revisa que el correo no exista ya.');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
   const filteredUsers = users.filter(u => 
     u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
