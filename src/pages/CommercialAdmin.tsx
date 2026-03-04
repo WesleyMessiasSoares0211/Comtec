@@ -22,7 +22,7 @@ import { useClients } from '../hooks/useClients';
 import type { Client } from '../types/client';
 import type { Product } from '../types/product';
 
-type TabType = 'dashboard' | 'clientes' | 'productos' | 'ofertas' | 'usuarios' | 'perfil'; // NUEVO
+type TabType = 'dashboard' | 'clientes' | 'productos' | 'ofertas' | 'usuarios' | 'perfil';
 
 export default function CommercialAdmin() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
@@ -39,11 +39,40 @@ export default function CommercialAdmin() {
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
   
   // Cotización para Revisar/Editar
-  const [quoteToRevise, setQuoteToRevise] = useState<any>(null); 
-  
+  const [quoteToRevise, setQuoteToRevise] = useState<any>(null);   
   const [quoteFilterClient, setQuoteFilterClient] = useState<Client | null>(null);
   const [historyClient, setHistoryClient] = useState<Client | null>(null);
   const [viewingClient, setViewingClient] = useState<Client | null>(null);
+
+  const [checkingSecurity, setCheckingSecurity] = useState(true);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [currentUserEmail, setCurrentUserEmail] = useState('');
+
+  useEffect(() => {
+    const checkSecurityRequirements = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setCurrentUserEmail(user.email || '');
+          const { data } = await supabase
+            .from('profiles')
+            .select('requires_password_change')
+            .eq('id', user.id)
+            .single();
+            
+          if (data?.requires_password_change) {
+            setMustChangePassword(true);
+          }
+        }
+      } catch (err) {
+        console.error("Error verificando seguridad:", err);
+      } finally {
+        setCheckingSecurity(false);
+      }
+    };
+    
+    checkSecurityRequirements();
+  }, []);
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab as TabType);
