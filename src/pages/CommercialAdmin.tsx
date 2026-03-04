@@ -93,6 +93,12 @@ export default function CommercialAdmin() {
       
       {activeTab === 'dashboard' && <DashboardView />}
 
+      {activeTab === 'perfil' && (
+     <div className="animate-in fade-in duration-300">
+       <UserProfile />
+     </div>
+   )}
+
       {/* NUEVA VISTA: USUARIOS */}
       {activeTab === 'usuarios' && (
         <div className="space-y-6 animate-in fade-in duration-300">
