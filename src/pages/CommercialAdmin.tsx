@@ -37,6 +37,7 @@ export default function CommercialAdmin() {
   // Estados de Edición
   const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
+  const { canManageProducts } = useAuth();
   
   // Cotización para Revisar/Editar
   const [quoteToRevise, setQuoteToRevise] = useState<any>(null);   
@@ -210,12 +211,14 @@ export default function CommercialAdmin() {
               <h2 className="text-3xl font-bold text-white tracking-tight">Catálogo Técnico</h2>
               <p className="text-slate-400 mt-1">Gestión de inventario y fichas de producto</p>
             </div>
-            <button 
-              onClick={() => { setProductToEdit(null); setShowProductForm(!showProductForm); }} 
-              className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-orange-500/25 hover:translate-y-[-2px] transition-all"
-            >
-              {showProductForm ? 'Ver Catálogo' : <><Plus className="w-5 h-5" /> Catalogar Producto</>}
-            </button>
+           {canManageProducts && (
+              <button 
+                onClick={() => { setProductToEdit(null); setShowProductForm(!showProductForm); }} 
+                className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-orange-500/25 hover:translate-y-[-2px] transition-all"
+              >
+                {showProductForm ? 'Ver Catálogo' : <><Plus className="w-5 h-5" /> Catalogar Producto</>}
+              </button>
+            )}
           </div>
           {showProductForm ? (
             <div className="max-w-4xl">
