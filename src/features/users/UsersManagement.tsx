@@ -119,15 +119,33 @@ export default function UsersManagement() {
     setIsProcessing(true);
 
     try {
-      const { error } = await supabase.functions.invoke('create-user', {
+      const { data, error } = await supabase.functions.invoke('create-user', {
         body: newUser
       });
 
+      // Si la red falla
       if (error) throw error;
+      
+      // NUEVO: Si la función se ejecutó pero devolvió nuestro error interno
+      if (data && data.success === false) {
+        throw new Error(data.errorMessage);
+      }
       
       toast.success('Usuario creado con éxito', { 
         description: 'Se ha enviado un correo de activación al empleado.' 
       });
+      
+      setShowCreateModal(false);
+      setNewUser({ email: '', password: '', nombre_completo: '', rut: '', telefono: '', direccion: '', role: 'vendedor' });
+      fetchUsers(); 
+    } catch (error: any) {
+      console.error(error);
+      // ESTO NOS DIRÁ LA VERDAD ABSOLUTA EN LA PANTALLA:
+      toast.error(`Error: ${error.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
       
       setShowCreateModal(false);
       setNewUser({ email: '', password: '', nombre_completo: '', rut: '', telefono: '', direccion: '', role: 'vendedor' });
