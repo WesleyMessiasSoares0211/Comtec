@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { clientService } from '../services/clientService';
 import { Client } from '../types/client';
@@ -6,22 +6,35 @@ import { Client } from '../types/client';
 export function useClients() {
   const queryClient = useQueryClient();
   
-  // Estados locais para controle da tabela
+  // Estados locales para el control de la tabla
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10); // Padrão 10 itens por página
+  const [pageSize, setPageSize] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Estado interno para el Debounce
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
-  // 1. Query Paginada (Depende de page, pageSize e searchTerm)
+  // Lógica de Debounce (Espera 500ms después de que el usuario deja de escribir)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setPage(1); // Volver a la primera página si la búsqueda cambia
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // 1. Query Paginada (Depende de page, pageSize y debouncedSearch)
   const clientsQuery = useQuery({
-    queryKey: ['clients', page, pageSize, searchTerm],
+    queryKey: ['clients', page, pageSize, debouncedSearch],
     queryFn: async () => {
-      return await clientService.getPaginated(page, pageSize, searchTerm);
+      return await clientService.getPaginated(page, pageSize, debouncedSearch);
     },
-    placeholderData: keepPreviousData, // Mantém dados antigos enquanto carrega os novos (UX fluida)
-    staleTime: 1000 * 60 * 5, // 5 minutos
+    placeholderData: keepPreviousData, // Mantiene datos antiguos mientras carga (UX fluida)
+    staleTime: 1000 * 60 * 5, // Caché por 5 minutos
   });
 
-  // 2. Query de Estatísticas (Independente da paginação)
+  // 2. Query de Estadísticas (Independiente de la paginación)
   const statsQuery = useQuery({
     queryKey: ['clientStats'],
     queryFn: async () => {
@@ -37,32 +50,32 @@ export function useClients() {
         queryClient.invalidateQueries({ queryKey: ['clientStats'] })
       ]);
     } catch (error) {
-      console.error("Erro ao atualizar clientes:", error);
+      console.error("Error al actualizar clientes:", error);
     }
   };
 
   return {
-    // Dados Paginados
+    // Datos Paginados
     clients: clientsQuery.data?.data || [],
     totalCount: clientsQuery.data?.count || 0,
     
-    // Dados de Estatísticas
+    // Datos de Estadísticas
     stats: statsQuery.data || null,
     
-    // Estados de Controle
+    // Estados de Control
     page,
     setPage,
     pageSize,
     setPageSize,
     searchTerm,
-    setSearchTerm, // O componente deve usar debounce ao setar isso
+    setSearchTerm,
     
-    // Feedback
+    // Feedback de Carga y Errores
     loading: clientsQuery.isLoading || statsQuery.isLoading,
-    isFetching: clientsQuery.isFetching, // Útil para mostrar spinner pequeno ao mudar página
+    isFetching: clientsQuery.isFetching,
     error: clientsQuery.error ? (clientsQuery.error as Error).message : null,
     
-    // Ações
+    // Acciones
     refreshClients
   };
 }
