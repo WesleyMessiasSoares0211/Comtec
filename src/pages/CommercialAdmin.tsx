@@ -20,7 +20,7 @@ import { useClients } from '../hooks/useClients';
 import type { Client } from '../types/client';
 import type { Product } from '../types/product';
 
-type TabType = 'dashboard' | 'clientes' | 'productos' | 'ofertas' | 'usuarios'; // NUEVO
+type TabType = 'dashboard' | 'clientes' | 'productos' | 'ofertas' | 'usuarios' | 'perfil'; // NUEVO
 
 export default function CommercialAdmin() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
