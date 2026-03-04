@@ -10,7 +10,8 @@ import ProductsForm from '../features/catalog/ProductsForm';
 import ProductsList from '../features/catalog/ProductsList';
 import QuoteBuilder from '../features/quotes/QuoteBuilder';
 import QuotesList from '../features/quotes/QuotesList';
-import UsersManagement from '../features/users/UsersManagement'; // NUEVO
+import UsersManagement from '../features/users/UsersManagement';
+import UserProfile from '../features/profile/UserProfile';
 
 import ClientStatsBoard from '../features/clients/ClientStats';
 import ClientHistoryModal from '../features/clients/ClientHistoryModal';
