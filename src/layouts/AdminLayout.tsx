@@ -53,7 +53,8 @@ export default function AdminLayout({ children, activeTab, onTabChange }: AdminL
     'clientes': 'Directorio',
     'productos': 'Catálogo',
     'ofertas': 'Cotizador',
-    'usuarios': 'Equipo' // NUEVO
+    'usuarios': 'Equipo',
+    'perfil' : 'Mi Perfil'
   };
 
   return (
