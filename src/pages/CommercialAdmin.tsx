@@ -19,6 +19,7 @@ import ClientStatsBoard from '../features/clients/ClientStats';
 import ClientHistoryModal from '../features/clients/ClientHistoryModal';
 import ClientDetailsModal from '../features/clients/ClientDetailsModal'; 
 import { useClients } from '../hooks/useClients';
+import { useAuth } from '../hooks/useAuth';
 import type { Client } from '../types/client';
 import type { Product } from '../types/product';
 
