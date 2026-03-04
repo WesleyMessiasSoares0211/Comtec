@@ -188,44 +188,62 @@ export const clientService = {
       const { contacts, ...updatePayload } = updates;
 
       // 1. Actualizar datos base del cliente
-      const { error } = await supabase
-        .from('crm_clients')
-        .update(updatePayload)
-        .eq('id', id);
+      if (Object.keys(updatePayload).length > 0) {
+        const { error } = await supabase
+          .from('crm_clients')
+          .update(updatePayload)
+          .eq('id', id);
+        if (error) throw error;
+      }
 
-      if (error) throw error;
-
-      // 2. Gestionar Contactos (Estrategia: Reemplazo Total)
+      // 2. Gestionar Contactos (Estrategia: Sincronización Inteligente / Upsert)
       if (contacts !== undefined) {
-        // a) Borrar contactos existentes
-        const { error: deleteError } = await supabase
+        
+        // A. Obtener los IDs de los contactos que el usuario quiere mantener/actualizar
+        const incomingContactIds = contacts
+          .filter(c => c.id) // Solo los que ya tienen ID
+          .map(c => c.id);
+
+        // B. Eliminar los contactos antiguos que ya no están en la nueva lista
+        // (Solo si había contactos que borrar)
+        if (incomingContactIds.length > 0) {
+          const { error: deleteError } = await supabase
+            .from('crm_client_contacts')
+            .delete()
+            .eq('client_id', id)
+            .not('id', 'in', `(${incomingContactIds.join(',')})`);
+            
+          if (deleteError) throw new Error('Error al limpiar contactos removidos.');
+        } else {
+          // Si incomingContactIds está vacío, significa que el usuario borró TODOS los contactos.
+          const { error: deleteAllError } = await supabase
             .from('crm_client_contacts')
             .delete()
             .eq('client_id', id);
             
-        if (deleteError) {
-            console.error('Error limpiando contactos antiguos:', deleteError);
-            throw new Error('Error al actualizar lista de contactos.');
+          if (deleteAllError) throw new Error('Error al eliminar todos los contactos.');
         }
 
-        // b) Insertar nuevos contactos
-        if (contacts.length > 0) {
-          const contactsPayload = contacts.map(c => {
-            // Eliminamos el ID si viene del frontend para que se genere uno nuevo
-            // o lo mantenemos si queremos "recuperar" el mismo ID (arriesgado en reemplazo total)
-            // Aquí optamos por dejar que la DB genere nuevos IDs para limpieza
-            const { id: _, ...contactData } = c; 
-            return {
-              ...contactData,
-              client_id: id
-            };
-          });
-          
-          const { error: insertError } = await supabase
-            .from('crm_client_contacts')
-            .insert(contactsPayload);
-            
-          if (insertError) throw insertError;
+        // C. Procesar inserciones y actualizaciones
+        for (const contact of contacts) {
+          if (contact.id) {
+            // Actualizar contacto existente (mantenemos su ID para no romper cotizaciones)
+            const { id: contactId, ...contactDataToUpdate } = contact;
+            const { error: updateError } = await supabase
+              .from('crm_client_contacts')
+              .update(contactDataToUpdate)
+              .eq('id', contactId);
+              
+            if (updateError) throw updateError;
+          } else {
+            // Insertar contacto nuevo
+            const { id: _, ...newContactData } = contact; // Ignoramos el id indefinido
+            const { error: insertError } = await supabase
+              .from('crm_client_contacts')
+              .insert({ ...newContactData, client_id: id });
+              
+            if (insertError) throw insertError;
+          }
         }
       }
 
