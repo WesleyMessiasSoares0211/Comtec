@@ -1,5 +1,6 @@
 import { useEffect, Suspense, lazy } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate, useSearchParams, useParams, Outlet } from 'react-router-dom';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { supabase } from './lib/supabase';
 import { Loader } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
@@ -159,32 +160,34 @@ export default function App() {
     <>
       <Toaster position="top-right" theme="dark" richColors closeButton />
       <Suspense fallback={<FallbackLoader />}>
-        <Routes>
-          {/* Rutas Públicas (Con Navegación) */}
-          <Route element={<PublicLayoutWrapper session={session} />}>
-            <Route path="/" element={<HomePage onNavigate={(p, e) => handleGlobalNavigate(navigate, p, e)} />} />
-            <Route path="/catalog" element={<CatalogWrapper />} />
-            <Route path="/product/:id" element={<ProductWrapper />} />
-            <Route path="/nosotros" element={<NosotrosPage onNavigate={(p) => handleGlobalNavigate(navigate, p)} />} />
-            <Route path="/solutions" element={<SolutionsPage onNavigate={(p) => handleGlobalNavigate(navigate, p)} />} />
-            <Route path="/clients" element={<ClientsPage onNavigate={(p) => handleGlobalNavigate(navigate, p)} />} />
-            
-            <Route path="/acceso-documento" element={<DocumentAccess />} />
-            <Route path="/login" element={<LoginWrapper session={session} />} />
-          </Route>
-
-          {/* Rutas de Documentos Públicos Seguros (Entorno Aislado) */}
-          <Route element={<StandaloneDocumentLayout />}>
-            <Route path="/quote/docs" element={<QuoteDocsViewer />} />
-            <Route path="/verify/:folio" element={<VerifyWrapper />} />
-          </Route>
-
-          {/* Rutas Administrativas */}
-          <Route path="/admin/*" element={session ? <CommercialAdmin /> : <Navigate to="/login" replace />} />
-          <Route path="/system" element={session ? <SystemConfig /> : <Navigate to="/" replace />} />
-
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <ErrorBoundary>
+            <Routes>
+              {/* Rutas Públicas (Con Navegación) */}
+              <Route element={<PublicLayoutWrapper session={session} />}>
+                <Route path="/" element={<HomePage onNavigate={(p, e) => handleGlobalNavigate(navigate, p, e)} />} />
+                <Route path="/catalog" element={<CatalogWrapper />} />
+                <Route path="/product/:id" element={<ProductWrapper />} />
+                <Route path="/nosotros" element={<NosotrosPage onNavigate={(p) => handleGlobalNavigate(navigate, p)} />} />
+                <Route path="/solutions" element={<SolutionsPage onNavigate={(p) => handleGlobalNavigate(navigate, p)} />} />
+                <Route path="/clients" element={<ClientsPage onNavigate={(p) => handleGlobalNavigate(navigate, p)} />} />
+                
+                <Route path="/acceso-documento" element={<DocumentAccess />} />
+                <Route path="/login" element={<LoginWrapper session={session} />} />
+              </Route>
+    
+              {/* Rutas de Documentos Públicos Seguros (Entorno Aislado) */}
+              <Route element={<StandaloneDocumentLayout />}>
+                <Route path="/quote/docs" element={<QuoteDocsViewer />} />
+                <Route path="/verify/:folio" element={<VerifyWrapper />} />
+              </Route>
+    
+              {/* Rutas Administrativas */}
+              <Route path="/admin/*" element={session ? <CommercialAdmin /> : <Navigate to="/login" replace />} />
+              <Route path="/system" element={session ? <SystemConfig /> : <Navigate to="/" replace />} />
+    
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </ErrorBoundary>
       </Suspense>
       {session && <RoleSimulator />}
     </>
