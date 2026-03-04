@@ -120,6 +120,23 @@ export default function CommercialAdmin() {
   };
 
   return (
+
+    if (checkingSecurity) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center">
+        <Loader2 className="w-10 h-10 text-cyan-500 animate-spin mb-4" />
+        <span className="text-slate-500 text-xs font-bold uppercase tracking-widest">Verificando credenciales...</span>
+      </div>
+    );
+  }
+
+  if (mustChangePassword) {
+    return <ForcePasswordChange onSuccess={() => setMustChangePassword(false)} userEmail={currentUserEmail} />;
+  }
+
+  return (
+    <AdminLayout activeTab={activeTab} onTabChange={handleTabChange}>
+      {/* Todo tu código interno de AdminLayout se queda exactamente igual */}
     <AdminLayout activeTab={activeTab} onTabChange={handleTabChange}>
       
       {activeTab === 'dashboard' && <DashboardView />}
