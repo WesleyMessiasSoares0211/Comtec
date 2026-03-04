@@ -179,6 +179,17 @@ export default function AdminLayout({ children, activeTab, onTabChange }: AdminL
             </nav>
           </div>
         </div>
+        
+        <div className="mb-6">
+            <nav className="space-y-1 border-t border-slate-800 pt-6">
+              <NavItem 
+                icon={<UserCircle className="w-5 h-5" />} 
+                label="Mi Perfil" 
+                active={activeTab === 'perfil'} 
+                onClick={() => handleTabClick('perfil')} 
+              />
+            </nav>
+          </div>
 
         <div className="mt-auto p-4 border-t border-slate-800 bg-slate-950/30 shrink-0">
           <button onClick={handleLogout} className="flex items-center gap-3 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-all w-full px-4 py-3 group">
