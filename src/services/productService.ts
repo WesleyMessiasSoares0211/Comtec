@@ -29,6 +29,19 @@ const formatEjUsoToJSONB = (val: any): any[] => {
 };
 
 export const productService = {
+  // --- FUNCIÓN AUXILIAR PARA RECORTAR LA URL ---
+  // Transforma: "https://.../public/product-images/123.jpg" -> "123.jpg"
+  extractFilePath(url: string, bucketName: string): string | null {
+    if (!url) return null;
+    if (!url.startsWith('http')) return url; // Si ya es un nombre corto, lo devuelve igual
+    
+    const separator = `/public/${bucketName}/`;
+    const parts = url.split(separator);
+    
+    // Si encuentra el separador, devuelve la segunda mitad (el nombre del archivo)
+    return parts.length > 1 ? parts[1] : null;
+  },
+
   async create(formData: ProductFormData): Promise<Product> {
     const basePayload: any = {
       name: formData.name,
@@ -105,16 +118,18 @@ export const productService = {
         resultData = data;
       }
 
-      // 1. DESPUÉS DE ACTUALIZAR EXITOSAMENTE: Limpieza de archivos antiguos (si fueron reemplazados o borrados)
+      // 1. DESPUÉS DE ACTUALIZAR EXITOSAMENTE: Limpieza de archivos antiguos usando extractFilePath
       if (existingProduct) {
         try {
           // Si tenía foto, y la nueva foto es diferente o nula, borramos la antigua
           if (existingProduct.image_url && existingProduct.image_url !== resultData.image_url) {
-            await storageService.deleteFile(existingProduct.image_url, 'product-images');
+            const imagePath = this.extractFilePath(existingProduct.image_url, 'product-images');
+            if (imagePath) await storageService.deleteFile(imagePath, 'product-images');
           }
           // Si tenía PDF, y el nuevo PDF es diferente o nulo, borramos el antiguo
           if (existingProduct.datasheet_url && existingProduct.datasheet_url !== resultData.datasheet_url) {
-            await storageService.deleteFile(existingProduct.datasheet_url, 'tech-specs');
+            const pdfPath = this.extractFilePath(existingProduct.datasheet_url, 'tech-specs');
+            if (pdfPath) await storageService.deleteFile(pdfPath, 'tech-specs');
           }
         } catch (cleanupError) {
           console.warn("Atención: No se pudo limpiar el archivo huérfano (quizás ya no existía en Storage):", cleanupError);
@@ -144,21 +159,30 @@ export const productService = {
     // 1. Rescatamos el producto antes de borrarlo de Postgres para saber qué archivos tenía
     const existingProduct = await this.getById(id);
 
-    // 2. Borramos el producto de la base de datos
+    // 2. Borramos el producto de la base de datos Postgres
     const { error } = await supabase.from('products').delete().eq('id', id);
     if (error) throw error;
 
-    // 3. Si la base de datos lo borró con éxito, destruimos sus archivos en Storage
+    // 3. Destruimos los archivos enviando SOLO el nombre interno (path)
     if (existingProduct) {
       try {
         if (existingProduct.image_url) {
-          await storageService.deleteFile(existingProduct.image_url, 'product-images');
+          const imagePath = this.extractFilePath(existingProduct.image_url, 'product-images');
+          if (imagePath) {
+            await storageService.deleteFile(imagePath, 'product-images');
+            console.log("✅ Imagen eliminada exitosamente del bucket");
+          }
         }
+        
         if (existingProduct.datasheet_url) {
-          await storageService.deleteFile(existingProduct.datasheet_url, 'tech-specs');
+          const pdfPath = this.extractFilePath(existingProduct.datasheet_url, 'tech-specs');
+          if (pdfPath) {
+            await storageService.deleteFile(pdfPath, 'tech-specs');
+            console.log("✅ PDF eliminado exitosamente del bucket");
+          }
         }
       } catch (cleanupError) {
-        console.warn("Atención: Producto eliminado, pero hubo un error limpiando sus archivos de Storage:", cleanupError);
+        console.error("❌ Error limpiando archivos de Storage:", cleanupError);
       }
     }
   }
