@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { Product } from '../types/product';
 import { toast } from 'sonner';
+import { productService } from '../services/productService';
 
 export function useProducts() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -33,7 +34,7 @@ export function useProducts() {
   // Función de eliminar actualizada
   const deleteProduct = async (id: string) => {
     try {
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await productService.delete(id);
         .from('products')
         .delete()
         .eq('id', id);
@@ -49,7 +50,7 @@ export function useProducts() {
         }
         return;
       }
-
+      setProducts(prev => prev ? prev.filter(p => p.id !== id) : null);
       toast.success("Producto eliminado correctamente");
       
       // RECARGA COMPLETA: Volvemos a pedir los datos a la DB para asegurar sincronía
