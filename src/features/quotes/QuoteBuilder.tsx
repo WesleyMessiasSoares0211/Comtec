@@ -61,14 +61,14 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
   const selectedClient = clients.find(c => c.id === selectedClientId);
   const requiresApproval = items.some(item => (item.margin_pct || 0) < 15);
 
-  // Filtro de clientes asíncrono simulado (Debounce)
+  // Filtro de clientes asíncrono
   const filteredClients = useMemo(() => {
     if (!debouncedClientSearch) return [];
     const search = debouncedClientSearch.toLowerCase();
     return clients.filter(c => 
       c.razon_social.toLowerCase().includes(search) || 
       c.rut.includes(search)
-    ).slice(0, 8); // Limitamos para rendimiento
+    ).slice(0, 8);
   }, [debouncedClientSearch, clients]);
 
   useEffect(() => {
@@ -119,8 +119,8 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
   // --- LÓGICA DE ÍTEMS ---
   const handleAddItem = (product: any, qty: number = 1) => {
     const urlFicha = product.datasheet_url || product.technical_spec_url || null;
-    const baseCost = product.cost || (product.price * 0.7); // Fallback si no hay costo en DB
-    const defaultMargin = 25; // Margen sugerido por defecto
+    const baseCost = product.cost || (product.price * 0.7); 
+    const defaultMargin = 25; 
     const calculatedPrice = baseCost / (1 - (defaultMargin / 100));
 
     setItems(prev => {
@@ -157,7 +157,7 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
       unit_price: 0,
       total: 0,
       cost: 0,
-      margin_pct: 30, // Margen mayor para genéricos por seguridad
+      margin_pct: 30,
       is_generic: true,
       comment: ''
     }]);
@@ -167,7 +167,6 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
     const newItems = [...items];
     const item = { ...newItems[index], [field]: value };
 
-    // Recalcular precios si cambia costo, margen o cantidad
     if (field === 'cost' || field === 'margin_pct' || field === 'quantity' || field === 'unit_price') {
       if (field !== 'unit_price') {
         const safeCost = Number(item.cost) || 0;
@@ -195,12 +194,69 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
     setShowClientDropdown(false);
   };
 
-  // --- LÓGICA SMART IMPORT (Mantenida igual) ---
-  const processSmartImport = () => { /* ... Lógica existente ... */ };
-  const closeSmartImport = () => { setShowSmartImport(false); setImportText(''); setImportResults({ found: 0, missing: [] }); };
+  // --- LÓGICA CORE: COTIZACIÓN INTELIGENTE ---
+  const processSmartImport = () => {
+    if (!importText.trim() || !products) return;
+
+    const lines = importText.split('\n');
+    let addedCount = 0;
+    const missing: string[] = [];
+
+    lines.forEach(line => {
+      if (!line.trim()) return;
+      
+      const parts = line.split(/\t|;/);
+      let searchCode = '';
+      let qty = 1;
+
+      if (parts.length >= 2) {
+        searchCode = parts[0].trim();
+        qty = parseInt(parts[1].trim(), 10) || 1;
+      } else {
+        const spaceParts = line.trim().split(/\s+/);
+        if (spaceParts.length >= 2) {
+          qty = parseInt(spaceParts.pop() || '1', 10) || 1;
+          searchCode = spaceParts.join(' ').trim();
+        } else {
+          searchCode = line.trim();
+        }
+      }
+
+      if (!searchCode) return;
+      const targetCode = searchCode.toLowerCase();
+
+      const foundProduct = products.find(p => {
+        if (p.part_number?.toLowerCase() === targetCode) return true;
+        if (p.metadata?.client_part_numbers) {
+          const clientCodes = Object.values(p.metadata.client_part_numbers) as string[];
+          if (clientCodes.some(code => code.toLowerCase() === targetCode)) return true;
+        }
+        return false;
+      });
+
+      if (foundProduct) {
+        handleAddItem(foundProduct, qty);
+        addedCount++;
+      } else {
+        missing.push(searchCode);
+      }
+    });
+
+    setImportResults({ found: addedCount, missing });
+    
+    if (addedCount > 0) toast.success(`Procesamiento exitoso: ${addedCount} ítems cruzados e integrados.`);
+    if (missing.length > 0) toast.warning(`No se encontraron ${missing.length} códigos en el catálogo.`);
+    if (missing.length === 0) closeSmartImport();
+  };
+
+  const closeSmartImport = () => {
+    setShowSmartImport(false);
+    setImportText('');
+    setImportResults({ found: 0, missing: [] });
+  };
 
   const filteredProducts = useMemo(() => {
-    if (!products) return [];
+    if (!products || !searchTerm) return [];
     return products.filter(p => {
       const searchSafe = searchTerm.toLowerCase();
       return (p.name || '').toLowerCase().includes(searchSafe) || (p.part_number || '').toLowerCase().includes(searchSafe);
@@ -210,10 +266,81 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
   return (
     <div className="flex flex-col h-full space-y-6 animate-in fade-in relative">
       
-      {/* ... (Smart Import Modal se mantiene igual) ... */}
+      {/* MODAL SOBREPUESTO: COTIZACIÓN INTELIGENTE */}
+      {showSmartImport && (
+        <div className="absolute inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-start justify-center pt-10">
+          <div className="bg-slate-900 border border-cyan-500/30 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-cyan-500/10 rounded-lg text-cyan-400">
+                  <Wand2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-white font-bold">Importación Inteligente</h3>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-widest">Pega desde Excel: [N° Parte] [Tabulador] [Cantidad]</p>
+                </div>
+              </div>
+              <button onClick={closeSmartImport} className="text-slate-500 hover:text-white p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <textarea 
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-sm text-slate-300 font-mono focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none h-48 resize-none shadow-inner"
+                placeholder={`SENS-100\t15\nGATE-X\t2\nCABLE-M12\t50`}
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+              />
+              
+              {importResults.missing.length > 0 && (
+                <div className="bg-orange-500/10 border border-orange-500/20 p-4 rounded-xl">
+                  <h4 className="text-xs font-bold text-orange-400 uppercase tracking-wider flex items-center gap-2 mb-2">
+                    <AlertCircle className="w-4 h-4" /> Códigos no reconocidos ({importResults.missing.length})
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {importResults.missing.map((code, idx) => (
+                      <span key={idx} className="bg-slate-950 border border-orange-500/30 text-orange-300 text-[10px] px-2 py-1 rounded font-mono shadow-sm">
+                        {code}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button onClick={closeSmartImport} className="px-4 py-2 text-sm font-bold text-slate-400 hover:text-white transition-colors">Cancelar</button>
+                <button 
+                  onClick={processSmartImport} 
+                  disabled={!importText.trim()}
+                  className="bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-cyan-500/20 disabled:opacity-50 transition-all"
+                >
+                  <ListChecks className="w-4 h-4" />
+                  PROCESAR MATRIZ
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isRevisionMode && (
+        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 p-4 rounded-xl flex items-center justify-between animate-pulse shadow-sm">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5" />
+            <div>
+              <p className="text-sm font-bold">Modo Edición: Creando Revisión {nextVersion}</p>
+              <p className="text-xs text-amber-500/70">Original: {parentFolio}</p>
+            </div>
+          </div>
+          <button onClick={onSuccess} className="text-xs font-bold underline hover:text-amber-300">
+            Cancelar Edición
+          </button>
+        </div>
+      )}
 
       {/* SECCIÓN CLIENTE (COMBOBOX) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-slate-900/50 p-6 rounded-2xl border border-slate-800">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-slate-900/50 p-6 rounded-2xl border border-slate-800 shadow-sm">
         <div className="md:col-span-2 space-y-2 relative">
           <label className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
             <User className="w-4 h-4" /> Selección de Cliente
@@ -221,7 +348,7 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
           
           {selectedClientId ? (
             <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between bg-slate-950 border border-cyan-500/50 rounded-xl p-3">
+              <div className="flex items-center justify-between bg-slate-950 border border-cyan-500/50 rounded-xl p-3 shadow-inner">
                 <div>
                   <div className="text-white font-bold text-sm">
                     {selectedClientId === GENERIC_CLIENT_ID ? 'CLIENTE GENÉRICO / CONTADO' : selectedClient?.razon_social}
@@ -237,7 +364,6 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
                 )}
               </div>
               
-              {/* Input "Atención A" si es cliente genérico */}
               {selectedClientId === GENERIC_CLIENT_ID && (
                 <div className="animate-in slide-in-from-top-2">
                   <input 
@@ -245,7 +371,7 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
                     placeholder="Atención a: Ej. Juan Pérez - Fono: +569..." 
                     value={attentionTo}
                     onChange={(e) => setAttentionTo(e.target.value)}
-                    className="w-full bg-slate-950/50 border border-slate-700 rounded-xl p-3 text-sm text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none"
+                    className="w-full bg-slate-950/50 border border-slate-700 rounded-xl p-3 text-sm text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none shadow-sm"
                   />
                 </div>
               )}
@@ -262,12 +388,11 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
                   setShowClientDropdown(true);
                 }}
                 onFocus={() => setShowClientDropdown(true)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 pl-10 text-white focus:ring-2 focus:ring-cyan-500/50 outline-none transition-all"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 pl-10 text-white focus:ring-2 focus:ring-cyan-500/50 outline-none transition-all shadow-inner"
               />
               
               {showClientDropdown && clientSearch.length >= 2 && (
                 <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-50 max-h-60 overflow-y-auto custom-scrollbar">
-                  {/* Opción Cliente Genérico Siempre Visible */}
                   <div 
                     onClick={() => handleSelectClient({ id: GENERIC_CLIENT_ID, estado_financiero: 'aprobado' })}
                     className="p-3 bg-cyan-950/20 hover:bg-cyan-900/40 cursor-pointer flex items-center gap-3 border-b border-cyan-900/50 transition-colors"
@@ -315,25 +440,53 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
               type="number" 
               value={validityDays}
               onChange={(e) => setValidityDays(Number(e.target.value))}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 pl-10 text-white font-mono text-center focus:ring-2 focus:ring-cyan-500/50 outline-none"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 pl-10 text-white font-mono text-center focus:ring-2 focus:ring-cyan-500/50 outline-none shadow-inner"
             />
           </div>
         </div>
       </div>
 
       {/* SECCIÓN ÍTEMS */}
-      <div className="flex-1 bg-slate-900/30 border border-slate-800 rounded-2xl p-6 min-h-[500px] flex flex-col">
+      <div className="flex-1 bg-slate-900/30 border border-slate-800 rounded-2xl p-6 min-h-[500px] flex flex-col shadow-sm">
         <div className="relative mb-6 z-20 flex gap-3 flex-wrap">
           <div className="relative flex-1 min-w-[250px]">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
             <input 
               type="text" 
               placeholder="Buscar producto en catálogo..." 
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 pl-12 pr-4 text-white focus:ring-2 focus:ring-cyan-500/50 outline-none shadow-xl"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 pl-12 pr-4 text-white focus:ring-2 focus:ring-cyan-500/50 outline-none shadow-inner"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-            {/* ... (Dropdown de productos se mantiene igual) ... */}
+            {/* DROPDOWN PRODUCTOS RESTAURADO */}
+            {searchTerm && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-50">
+                {filteredProducts.map(product => (
+                  <div 
+                    key={product.id} 
+                    onClick={() => handleAddItem(product)}
+                    className="p-3 hover:bg-slate-800 cursor-pointer flex justify-between items-center border-b border-slate-800/50 last:border-0 transition-colors"
+                  >
+                    <div>
+                      <div className="font-bold text-white text-sm">{product.name}</div>
+                      <div className="text-xs text-slate-500 font-mono">{product.part_number}</div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      {(product.datasheet_url || product.technical_spec_url) && (
+                        <span className="flex items-center gap-1 text-[10px] text-cyan-400 bg-cyan-950/30 px-2 py-0.5 rounded border border-cyan-500/20">
+                          <LinkIcon className="w-3 h-3" /> Ficha Técnica
+                        </span>
+                      )}
+                      <span className="text-cyan-400 font-bold text-sm">${product.price.toLocaleString('es-CL')}</span>
+                      <Plus className="w-5 h-5 text-slate-400" />
+                    </div>
+                  </div>
+                ))}
+                {filteredProducts.length === 0 && (
+                  <div className="p-3 text-center text-slate-500 text-sm">No se encontraron productos</div>
+                )}
+              </div>
+            )}
           </div>
           
           <button 
@@ -345,7 +498,7 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
 
           <button 
             onClick={handleAddGenericItem}
-            className="bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 text-orange-400 px-4 py-3 rounded-xl flex items-center gap-2 font-bold text-sm shadow-lg transition-all"
+            className="bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 text-orange-400 px-4 py-3 rounded-xl flex items-center gap-2 font-bold text-sm shadow-lg shadow-orange-500/10 transition-all"
           >
             <Plus className="w-5 h-5" /> <span className="hidden sm:inline">Item Libre</span>
           </button>
@@ -356,10 +509,16 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
             <div className="h-full flex flex-col items-center justify-center text-slate-600 border-2 border-dashed border-slate-800 rounded-xl min-h-[200px]">
               <Calculator className="w-12 h-12 mb-3 opacity-50" />
               <p className="font-medium">Cotización vacía</p>
+              <button 
+                onClick={() => setShowSmartImport(true)}
+                className="mt-4 text-xs font-bold text-cyan-500 hover:text-cyan-400 flex items-center gap-1 transition-colors"
+              >
+                <Wand2 className="w-4 h-4" /> Probar importación inteligente
+              </button>
             </div>
           ) : (
             items.map((item, idx) => (
-              <div key={idx} className="bg-slate-950/50 border border-slate-800 rounded-xl p-4 transition-all hover:border-slate-700">
+              <div key={idx} className="bg-slate-950/50 border border-slate-800 rounded-xl p-4 transition-all hover:border-slate-700 shadow-sm">
                 <div className="grid grid-cols-12 gap-4 items-center">
                   
                   {/* Descripción */}
@@ -371,12 +530,19 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
                         value={item.name}
                         onChange={(e) => updateItemField(idx, 'name', e.target.value)}
                         placeholder="Descripción del ítem..."
-                        className="w-full bg-slate-900 border border-slate-700 rounded text-slate-200 px-3 py-2 text-sm focus:border-cyan-500 outline-none"
+                        className="w-full bg-slate-900 border border-slate-700 rounded text-slate-200 px-3 py-2 text-sm focus:border-cyan-500 outline-none shadow-inner"
                       />
                     ) : (
                       <div>
                         <div className="font-bold text-slate-200 text-sm">{item.name}</div>
-                        <div className="text-xs text-slate-500 font-mono">{item.part_number}</div>
+                        <div className="text-xs text-slate-500 font-mono flex gap-2 items-center">
+                          {item.part_number}
+                          {item.datasheet_url && (
+                            <span className="flex items-center gap-1 text-[10px] text-cyan-500">
+                              <FileCheck className="w-3 h-3" /> Ficha
+                            </span>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -388,7 +554,7 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
                       type="number" min="1" 
                       value={item.quantity}
                       onChange={(e) => updateItemField(idx, 'quantity', Number(e.target.value))}
-                      className="w-full bg-slate-900 border border-slate-700 rounded text-slate-200 px-2 py-2 text-sm text-center focus:border-cyan-500 outline-none"
+                      className="w-full bg-slate-900 border border-slate-700 rounded text-slate-200 px-2 py-2 text-sm text-center focus:border-cyan-500 outline-none shadow-inner"
                     />
                   </div>
 
@@ -401,8 +567,8 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
                         type="number" 
                         value={item.cost || 0}
                         onChange={(e) => updateItemField(idx, 'cost', Number(e.target.value))}
-                        disabled={!item.is_generic && !!item.cost} // Bloquea si ya viene de DB
-                        className={`w-full bg-slate-900 border border-slate-700 rounded text-slate-200 pl-6 py-2 text-sm focus:border-cyan-500 outline-none ${(!item.is_generic && !!item.cost) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        disabled={!item.is_generic && !!item.cost} 
+                        className={`w-full bg-slate-900 border border-slate-700 rounded text-slate-200 pl-6 py-2 text-sm focus:border-cyan-500 outline-none shadow-inner ${(!item.is_generic && !!item.cost) ? 'opacity-50 cursor-not-allowed' : ''}`}
                       />
                     </div>
                   </div>
@@ -415,7 +581,7 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
                         type="number" 
                         value={item.margin_pct || 0}
                         onChange={(e) => updateItemField(idx, 'margin_pct', Number(e.target.value))}
-                        className={`w-full bg-slate-900 border rounded text-slate-200 px-3 py-2 text-sm outline-none ${(item.margin_pct || 0) < 15 ? 'border-orange-500/50 focus:ring-orange-500' : 'border-slate-700 focus:border-cyan-500'}`}
+                        className={`w-full bg-slate-900 border rounded text-slate-200 px-3 py-2 text-sm outline-none shadow-inner ${(item.margin_pct || 0) < 15 ? 'border-orange-500/50 focus:ring-orange-500' : 'border-slate-700 focus:border-cyan-500'}`}
                       />
                       {(item.margin_pct || 0) < 15 && (
                         <AlertTriangle className="absolute right-2 top-2.5 w-4 h-4 text-orange-500" />
@@ -433,7 +599,7 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
 
                   {/* Acciones */}
                   <div className="col-span-3 lg:col-span-1 flex justify-end items-end h-full pb-1 gap-2">
-                    <button onClick={() => removeItem(idx)} className="p-2 text-slate-500 hover:text-red-500 transition-colors">
+                    <button onClick={() => removeItem(idx)} className="p-2 text-slate-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
                       <Trash2 className="w-5 h-5" />
                     </button>
                   </div>
@@ -442,12 +608,12 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
                 {/* Comentarios por Ítem */}
                 <div className="mt-3 pt-3 border-t border-slate-800/50">
                   <div className="flex gap-2">
-                    <MessageSquare className="w-4 h-4 text-slate-500 mt-2" />
+                    <MessageSquare className="w-4 h-4 text-slate-500 mt-2 shrink-0" />
                     <textarea 
                       placeholder="Comentarios o detalles técnicos para este ítem (visible en el PDF)..."
                       value={item.comment || ''}
                       onChange={(e) => updateItemField(idx, 'comment', e.target.value)}
-                      className="w-full bg-slate-900/50 border border-slate-800 rounded-lg p-2 text-xs text-slate-300 focus:border-cyan-500 outline-none resize-none h-10"
+                      className="w-full bg-slate-900/50 border border-slate-800 rounded-lg p-2 text-xs text-slate-300 focus:border-cyan-500 outline-none resize-none h-10 shadow-inner"
                     />
                   </div>
                 </div>
@@ -460,7 +626,7 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
         <div className="mt-6 pt-4 border-t border-slate-800 flex flex-col md:flex-row justify-between items-end gap-4">
           <div className="flex-1">
              {requiresApproval && (
-               <div className="bg-orange-500/10 border border-orange-500/20 text-orange-400 p-3 rounded-xl flex items-center gap-3 text-sm">
+               <div className="bg-orange-500/10 border border-orange-500/20 text-orange-400 p-3 rounded-xl flex items-center gap-3 text-sm shadow-sm">
                  <AlertTriangle className="w-5 h-5 shrink-0" />
                  <p>Uno o más ítems tienen un <b>margen inferior al 15%</b>. La cotización requerirá aprobación de Jefatura y no generará PDF automático.</p>
                </div>
@@ -480,7 +646,30 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
         </div>
       </div>
 
-      {/* ... (Sección Notas y Términos se mantiene igual) ... */}
+      {/* SECCIÓN NOTAS Y TÉRMINOS RESTAURADA */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-800 shadow-sm">
+          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+            <FileText className="w-3 h-3" /> Notas Internas
+          </label>
+          <textarea 
+            className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-300 focus:ring-1 focus:ring-cyan-500 outline-none resize-none h-24 shadow-inner"
+            placeholder="Observaciones adicionales (no visibles para el cliente)..."
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+        </div>
+        <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-800 shadow-sm">
+          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+            <AlertCircle className="w-3 h-3" /> Términos y Condiciones
+          </label>
+          <textarea 
+            className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-300 focus:ring-1 focus:ring-cyan-500 outline-none resize-none h-24 shadow-inner"
+            value={terms}
+            onChange={(e) => setTerms(e.target.value)}
+          />
+        </div>
+      </div>
 
       <div className="flex justify-end pt-4">
         <button
@@ -506,8 +695,8 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
           nextVersion={nextVersion}
           parentQuoteId={parentQuoteId}
           onSuccess={onSuccess}
-          attentionTo={attentionTo} // Pasamos el dato al preview
-          requiresApproval={requiresApproval} // Pasamos el flag
+          attentionTo={attentionTo}
+          requiresApproval={requiresApproval}
         />
       )}
     </div>
