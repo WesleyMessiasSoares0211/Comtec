@@ -1,5 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { Product, ProductFormData } from '../types/product';
+// NUEVA IMPORTACIÓN: Traemos el servicio de almacenamiento
+import { storageService } from './storageService';
 
 /**
  * Normaliza el campo ej_uso para que siempre sea un Array de Objetos
@@ -28,7 +30,6 @@ const formatEjUsoToJSONB = (val: any): any[] => {
 
 export const productService = {
   async create(formData: ProductFormData): Promise<Product> {
-    // 1. Payload base estricto sin la columna problemática
     const basePayload: any = {
       name: formData.name,
       main_category: formData.main_category,
@@ -46,13 +47,10 @@ export const productService = {
     };
 
     try {
-      // Intentamos con la columna de Fase 2
       const fullPayload = { ...basePayload, tipo_item: formData.tipo_item || 'producto_final' };
-      
       const { data, error } = await supabase.from('products').insert([fullPayload]).select().single();
 
       if (error) {
-        // Fallback si la BBDD rechaza la columna
         if (error.message.includes('tipo_item') || error.code === 'PGRST204') {
           console.warn('⚠️ Cache DB: Creando producto sin clasificación tipo_item.');
           const { data: fallbackData, error: fallbackError } = await supabase.from('products').insert([basePayload]).select().single();
@@ -69,7 +67,9 @@ export const productService = {
   },
 
   async update(id: string, formData: Partial<ProductFormData>): Promise<Product> {
-    // 1. Payload base estricto
+    // 0. ANTES DE ACTUALIZAR: Rescatamos el producto original para comparar si cambiaron los archivos
+    const existingProduct = await this.getById(id);
+
     const basePayload: any = {
       name: formData.name,
       main_category: formData.main_category,
@@ -88,22 +88,40 @@ export const productService = {
     if (formData.metadata) basePayload.metadata = formData.metadata;
 
     try {
-      // Intentamos actualizar con la columna de Fase 2
+      let resultData;
       const fullPayload = { ...basePayload, tipo_item: formData.tipo_item || 'producto_final' };
-      
       const { data, error } = await supabase.from('products').update(fullPayload).eq('id', id).select().single();
 
       if (error) {
-        // Fallback si la BBDD rechaza la columna
         if (error.message.includes('tipo_item') || error.code === 'PGRST204') {
           console.warn('⚠️ Cache DB: Actualizando producto sin clasificación tipo_item.');
           const { data: fallbackData, error: fallbackError } = await supabase.from('products').update(basePayload).eq('id', id).select().single();
           if (fallbackError) throw fallbackError;
-          return fallbackData;
+          resultData = fallbackData;
+        } else {
+          throw error;
         }
-        throw error;
+      } else {
+        resultData = data;
       }
-      return data;
+
+      // 1. DESPUÉS DE ACTUALIZAR EXITOSAMENTE: Limpieza de archivos antiguos (si fueron reemplazados o borrados)
+      if (existingProduct) {
+        try {
+          // Si tenía foto, y la nueva foto es diferente o nula, borramos la antigua
+          if (existingProduct.image_url && existingProduct.image_url !== resultData.image_url) {
+            await storageService.deleteFile(existingProduct.image_url, 'product-images');
+          }
+          // Si tenía PDF, y el nuevo PDF es diferente o nulo, borramos el antiguo
+          if (existingProduct.datasheet_url && existingProduct.datasheet_url !== resultData.datasheet_url) {
+            await storageService.deleteFile(existingProduct.datasheet_url, 'tech-specs');
+          }
+        } catch (cleanupError) {
+          console.warn("Atención: No se pudo limpiar el archivo huérfano (quizás ya no existía en Storage):", cleanupError);
+        }
+      }
+
+      return resultData;
     } catch (error) {
       console.error("Error updating product:", error);
       throw error;
@@ -123,7 +141,25 @@ export const productService = {
   },
 
   async delete(id: string): Promise<void> {
+    // 1. Rescatamos el producto antes de borrarlo de Postgres para saber qué archivos tenía
+    const existingProduct = await this.getById(id);
+
+    // 2. Borramos el producto de la base de datos
     const { error } = await supabase.from('products').delete().eq('id', id);
     if (error) throw error;
+
+    // 3. Si la base de datos lo borró con éxito, destruimos sus archivos en Storage
+    if (existingProduct) {
+      try {
+        if (existingProduct.image_url) {
+          await storageService.deleteFile(existingProduct.image_url, 'product-images');
+        }
+        if (existingProduct.datasheet_url) {
+          await storageService.deleteFile(existingProduct.datasheet_url, 'tech-specs');
+        }
+      } catch (cleanupError) {
+        console.warn("Atención: Producto eliminado, pero hubo un error limpiando sus archivos de Storage:", cleanupError);
+      }
+    }
   }
 };
