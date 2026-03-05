@@ -13,6 +13,8 @@ interface QuoteData {
   terms?: string;
   validity_days?: number;
   version?: number;
+  attention_to?: string; // Nuevo
+  seller_profile?: any; // Nuevo: Perfil del vendedor
 }
 
 export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: string): boolean => {
@@ -83,13 +85,25 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
     doc.setTextColor(colorSlateDark[0], colorSlateDark[1], colorSlateDark[2]);
     doc.text(client.razon_social || 'Cliente General', 14, 58);
     
+    let nextY = 63;
+
+    // Inyección de Atención A (Genérico o Específico)
+    if (quote.attention_to) {
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(colorCyan[0], colorCyan[1], colorCyan[2]);
+      doc.text(`ATN: ${quote.attention_to}`, 14, nextY);
+      nextY += 5;
+    }
+    
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(colorSlateText[0], colorSlateText[1], colorSlateText[2]);
-    doc.text(`RUT Comercial: ${client.rut || 'No Registrado'}`, 14, 63);
+    doc.text(`RUT Comercial: ${client.rut || 'No Registrado'}`, 14, nextY);
+    nextY += 5;
     
     const ubicacion = [client.direccion, client.comuna, client.ciudad].filter(Boolean).join(', ');
-    if (ubicacion) doc.text(ubicacion, 14, 68);
+    if (ubicacion) doc.text(ubicacion, 14, nextY);
 
     if (qrCodeUrl) {
       try {
@@ -107,13 +121,21 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
     // --- TABLA DE PRODUCTOS ---
     const items = Array.isArray(quote.items) ? quote.items : [];
 
-    const tableData = items.map(i => [
+    // Preparamos los datos combinando nombre + comentario para pasarlos a autoTable
+    const tableData = items.map(i => {
+      let desc = i.name || 'Sin Descripción';
+      // Si hay comentario, lo anexamos con un salto de línea y un prefijo para que el hook lo detecte
+      if (i.comment) {
+        desc += `\n__COMMENT__Nota: ${i.comment}`; 
+      }
+      return [
         i.part_number || 'S/N', 
-        i.name || 'Sin Descripción', 
+        desc, 
         i.quantity || 0, 
         `$${(i.unit_price || 0).toLocaleString('es-CL')}`, 
         `$${(i.total || 0).toLocaleString('es-CL')}`
-    ]);
+      ];
+    });
 
     autoTable(doc, {
       startY: 85,
@@ -145,31 +167,48 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
         3: { cellWidth: 28, halign: 'right' },
         4: { cellWidth: 28, halign: 'right', fontStyle: 'bold', textColor: colorSlateDark }
       },
+      willDrawCell: (data) => {
+         // Hook para formatear el texto compuesto (Nombre + Comentario) antes de imprimirlo
+         if (data.section === 'body' && data.column.index === 1) {
+            // Limpiamos el texto principal para que AutoTable mida bien las alturas
+            const rawText = data.cell.text.join('\n');
+            const parts = rawText.split('__COMMENT__');
+            data.cell.text = [parts[0].trim()];
+         }
+      },
       didDrawCell: (data) => {
         if (data.section === 'body' && data.column.index === 1) {
           const item = items[data.row.index];
+          let currentY = data.cell.y + 12; // Base Y después del texto principal de la tabla
+
+          // 1. Dibujar Comentario (si existe)
+          if (item && item.comment) {
+             doc.setFontSize(8);
+             doc.setFont('helvetica', 'italic');
+             doc.setTextColor(colorSlateLight[0], colorSlateLight[1], colorSlateLight[2]);
+             const commentLines = doc.splitTextToSize(`Nota: ${item.comment}`, data.cell.width - 4);
+             doc.text(commentLines, data.cell.x + 2, currentY);
+             currentY += (commentLines.length * 3.5); // Desplazar Y para el Datasheet
+          }
+
+          // 2. Dibujar Link de Datasheet (si existe)
           if (item && item.datasheet_url) {
-            
             doc.setFontSize(8);
             doc.setFont('helvetica', 'bold');
             doc.setTextColor(colorCyan[0], colorCyan[1], colorCyan[2]);
             doc.setDrawColor(colorCyan[0], colorCyan[1], colorCyan[2]);
             doc.setLineWidth(0.25);
 
-            const textLines = doc.splitTextToSize(item.name || '', data.cell.width - 8);
-            const startX = data.cell.x + 4;
-            const linkY = data.cell.y + (textLines.length * 4) + 8; 
-
-            // 🎨 ICONO VECTORIAL DE DOCUMENTO (Esquina doblada)
+            const startX = data.cell.x + 2;
+            const iconY = currentY - 2.5; 
             const iconW = 2.4;
             const iconH = 3.0;
-            const iconY = linkY - 2.5; 
 
             // Silueta exterior del documento
-            doc.line(startX, iconY, startX, iconY + iconH); // Izquierda
-            doc.line(startX, iconY + iconH, startX + iconW, iconY + iconH); // Abajo
-            doc.line(startX + iconW, iconY + iconH, startX + iconW, iconY + 0.8); // Derecha (hasta doblez)
-            doc.line(startX + iconW - 0.8, iconY, startX, iconY); // Arriba (hasta doblez)
+            doc.line(startX, iconY, startX, iconY + iconH); 
+            doc.line(startX, iconY + iconH, startX + iconW, iconY + iconH); 
+            doc.line(startX + iconW, iconY + iconH, startX + iconW, iconY + 0.8); 
+            doc.line(startX + iconW - 0.8, iconY, startX, iconY); 
             
             // Corte en diagonal (el doblez)
             doc.line(startX + iconW - 0.8, iconY, startX + iconW, iconY + 0.8);
@@ -182,13 +221,9 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
             doc.line(startX + 0.5, iconY + 1.4, startX + 1.6, iconY + 1.4);
             doc.line(startX + 0.5, iconY + 2.0, startX + 1.2, iconY + 2.0);
 
-            // Texto sin corchetes, con padding perfecto al lado del icono
-            doc.text('Ver Ficha Técnica', startX + iconW + 1.5, linkY);
+            doc.text('Ver Ficha Técnica', startX + iconW + 1.5, currentY);
 
-            // Área interactiva para el clic
-            doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, {
-              url: item.datasheet_url
-            });
+            doc.link(data.cell.x, currentY - 3, 30, 4, { url: item.datasheet_url });
           }
         }
       }
@@ -208,10 +243,10 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(colorSlateText[0], colorSlateText[1], colorSlateText[2]);
     doc.text('Subtotal Neto:', 135, totalsY + 8);
-    doc.text(`$${Number(quote.subtotal_neto).toLocaleString('es-CL')}`, 192, totalsY + 8, { align: 'right' });
+    doc.text(`$${Number(quote.subtotal_neto).toLocaleString('es-CL', { maximumFractionDigits: 0 })}`, 192, totalsY + 8, { align: 'right' });
     
     doc.text('IVA (19%):', 135, totalsY + 15);
-    doc.text(`$${Number(quote.iva).toLocaleString('es-CL')}`, 192, totalsY + 15, { align: 'right' });
+    doc.text(`$${Number(quote.iva).toLocaleString('es-CL', { maximumFractionDigits: 0 })}`, 192, totalsY + 15, { align: 'right' });
     
     doc.setDrawColor(203, 213, 225);
     doc.line(135, totalsY + 19, 192, totalsY + 19);
@@ -220,7 +255,7 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(colorCyan[0], colorCyan[1], colorCyan[2]);
     doc.text('TOTAL GENERAL:', 135, totalsY + 26);
-    doc.text(`$${Number(quote.total_bruto).toLocaleString('es-CL')}`, 192, totalsY + 26, { align: 'right' });
+    doc.text(`$${Number(quote.total_bruto).toLocaleString('es-CL', { maximumFractionDigits: 0 })}`, 192, totalsY + 26, { align: 'right' });
 
     // --- NOTAS Y LEGALES ---
     let textY = totalsY + 40;
@@ -250,6 +285,28 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
       doc.setTextColor(colorSlateText[0], colorSlateText[1], colorSlateText[2]);
       const splitTerms = doc.splitTextToSize(quote.terms, 180);
       doc.text(splitTerms, 14, textY + 5);
+      textY += (splitTerms.length * 4) + 10;
+    }
+
+    // --- FIRMA DEL EMISOR ---
+    if (quote.seller_profile) {
+       if (textY > 260) { doc.addPage(); textY = 20; }
+       doc.setDrawColor(226, 232, 240);
+       doc.line(14, textY, 80, textY); // Línea sutil
+       
+       doc.setFontSize(7);
+       doc.setFont('helvetica', 'bold');
+       doc.setTextColor(colorSlateLight[0], colorSlateLight[1], colorSlateLight[2]);
+       doc.text('Emitido por:', 14, textY + 5);
+       
+       doc.setFontSize(9);
+       doc.setTextColor(colorSlateDark[0], colorSlateDark[1], colorSlateDark[2]);
+       doc.text(quote.seller_profile.nombre_completo || 'Representante de Ventas', 14, textY + 10);
+       
+       doc.setFontSize(8);
+       doc.setFont('helvetica', 'normal');
+       doc.setTextColor(colorSlateText[0], colorSlateText[1], colorSlateText[2]);
+       doc.text(`${quote.seller_profile.email || ''} ${quote.seller_profile.telefono ? `| Tel: ${quote.seller_profile.telefono}` : ''}`, 14, textY + 14);
     }
 
     // --- PIE DE PÁGINA ---
