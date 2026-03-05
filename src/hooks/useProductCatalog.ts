@@ -1,7 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useProducts } from './useProducts';
-// No necesitamos importar Product explícitamente si usamos inferencia, 
-// pero lo mantenemos por buenas prácticas.
 
 const ITEMS_PER_PAGE = 10;
 
@@ -9,17 +7,27 @@ export function useProductCatalog() {
   const { products, loading, error, refreshProducts, deleteProduct } = useProducts();
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState(''); // Estado interno para el Debounce
   const [categoryFilter, setCategoryFilter] = useState('todos');
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Helper para obtener la categoría de forma segura (soporta main_category o category)
+  // Helper para obtener la categoría de forma segura
   const getCategory = (p: any): string => {
-    // Intenta leer 'main_category', si no existe, usa 'category', si no, string vacío
     return p.main_category || p.category || '';
   };
 
-  // 1. CÁLCULOS DE ESTADÍSTICAS
+  // 1. LÓGICA DE DEBOUNCE (Espera 500ms tras dejar de teclear)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setCurrentPage(1); // Volvemos a la primera página si la búsqueda cambia
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // 2. CÁLCULOS DE ESTADÍSTICAS
   const stats = useMemo(() => {
     if (!products) return { totalSku: 0, totalValue: 0, criticalStock: 0 };
 
@@ -35,32 +43,32 @@ export function useProductCatalog() {
     }, { totalSku: 0, totalValue: 0, criticalStock: 0 });
   }, [products]);
 
-  // 2. EXTRAER CATEGORÍAS (CORREGIDO PARA DETECTAR main_category)
+  // 3. EXTRAER CATEGORÍAS
   const availableCategories = useMemo(() => {
     if (!products || products.length === 0) return [];
     
     const unique = new Set(
       products
-        .map(p => getCategory(p)) // Usamos el helper para obtener el valor correcto
-        .filter(c => c && c.trim() !== '') // Filtramos vacíos
+        .map(p => getCategory(p))
+        .filter(c => c && c.trim() !== '')
     );
     return Array.from(unique).sort();
   }, [products]);
 
-  // 3. FILTRADO
+  // 4. FILTRADO (Ahora usamos debouncedSearch en lugar de searchTerm)
   const filteredProducts = useMemo(() => {
     if (!products) return [];
 
     return products.filter(product => {
-      // Filtro de Texto
-      const searchLower = searchTerm.toLowerCase();
+      // Filtro de Texto (Aplica el debounce)
+      const searchLower = debouncedSearch.toLowerCase();
       const matchesSearch = 
         (product.name || '').toLowerCase().includes(searchLower) ||
         (product.part_number || '').toLowerCase().includes(searchLower) ||
         (product.brand || '').toLowerCase().includes(searchLower);
 
-      // Filtro de Categoría (CORREGIDO)
-      const prodCat = getCategory(product); // Usamos el mismo helper
+      // Filtro de Categoría
+      const prodCat = getCategory(product);
       const matchesCategory = categoryFilter === 'todos' || prodCat === categoryFilter;
 
       // Filtro de Stock
@@ -68,17 +76,18 @@ export function useProductCatalog() {
 
       return matchesSearch && matchesCategory && matchesStock;
     });
-  }, [products, searchTerm, categoryFilter, showLowStockOnly]);
+  }, [products, debouncedSearch, categoryFilter, showLowStockOnly]);
 
-  // 4. PAGINACIÓN
+  // 5. PAGINACIÓN
   const paginatedProducts = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
     return filteredProducts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   }, [filteredProducts, currentPage]);
 
-  const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE) || 1;
 
-  useEffect(() => { setCurrentPage(1); }, [searchTerm, categoryFilter, showLowStockOnly]);
+  // Resetear paginación al cambiar otros filtros
+  useEffect(() => { setCurrentPage(1); }, [categoryFilter, showLowStockOnly]);
 
   return {
     products: paginatedProducts,
