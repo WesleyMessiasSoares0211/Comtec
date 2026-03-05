@@ -185,15 +185,32 @@ export default function QuotePreview({
 
           <div className="grid grid-cols-2 gap-8 mb-12">
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-widest">Cliente:</p>
-              <p className="font-bold text-xl text-slate-900 leading-tight">{client.razon_social}</p>
-              {attentionTo && (
-                <p className="text-sm font-bold text-cyan-700 mt-1 uppercase">ATN: {attentionTo}</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-widest">
+                {client.rut === '1-9' || client.rut === 'Contado' ? 'Atención a:' : 'Cliente:'}
+              </p>
+              
+              {/* LÓGICA DE CLIENTE GENÉRICO VS REGULAR */}
+              {client.rut === '1-9' || client.rut === 'Contado' ? (
+                 <>
+                   <p className="font-bold text-xl text-slate-900 leading-tight uppercase">
+                     {attentionTo || 'Venta Express'}
+                   </p>
+                   <div className="mt-2 text-sm text-slate-600">
+                     <p>Cotización al Contado</p>
+                   </div>
+                 </>
+              ) : (
+                 <>
+                   <p className="font-bold text-xl text-slate-900 leading-tight">{client.razon_social}</p>
+                   {attentionTo && (
+                     <p className="text-sm font-bold text-cyan-700 mt-1 uppercase">ATN: {attentionTo}</p>
+                   )}
+                   <div className="mt-2 text-sm text-slate-600">
+                     <p>RUT: {client.rut}</p>
+                     <p>{client.direccion}</p>
+                   </div>
+                 </>
               )}
-              <div className="mt-2 text-sm text-slate-600">
-                <p>RUT: {client.rut}</p>
-                <p>{client.direccion}</p>
-              </div>
             </div>
             
             <div className="flex flex-col items-end">
