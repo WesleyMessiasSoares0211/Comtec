@@ -31,34 +31,31 @@ export function useProducts() {
     }
   }, []);
 
-  // Función de eliminar actualizada
+  // Función de eliminar actualizada y conectada a productService
   const deleteProduct = async (id: string) => {
     try {
-      const { error: deleteError } = await productService.delete(id);
-        .from('products')
-        .delete()
-        .eq('id', id);
-
-      if (deleteError) {
-        if (deleteError.code === '23503') {
-          toast.error("No se puede eliminar este producto", {
-            description: "Este producto forma parte de cotizaciones históricas. Te recomendamos editarlo.",
-            duration: 5000,
-          });
-        } else {
-          throw deleteError;
-        }
-        return;
-      }
+      // 1. Llamamos a nuestro servicio blindado (Postgres + Storage)
+      await productService.delete(id);
       
+      // 2. Si pasa sin arrojar error, mostramos éxito
       toast.success("Producto eliminado correctamente");
       
-      // RECARGA COMPLETA: Volvemos a pedir los datos a la DB para asegurar sincronía
+      // 3. RECARGA COMPLETA: Volvemos a pedir los datos a la DB para asegurar sincronía
       await fetchProducts(); 
 
     } catch (err: any) {
       console.error("Error eliminando:", err);
-      toast.error("Error al eliminar", { description: err.message });
+      
+      // Manejo de error específico de llave foránea (usado en cotizaciones)
+      if (err?.code === '23503') {
+        toast.error("No se puede eliminar este producto", {
+          description: "Este producto forma parte de cotizaciones históricas. Te recomendamos editarlo u ocultarlo.",
+          duration: 5000,
+        });
+      } else {
+        // Cualquier otro error (ej: permisos, red)
+        toast.error("Error al eliminar", { description: err?.message || 'Error desconocido' });
+      }
     }
   };
 
