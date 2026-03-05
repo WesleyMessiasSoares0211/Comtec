@@ -112,7 +112,7 @@ export default function QuotePreview({
         notes,
         terms,
         validity_days: validityDays,
-        version: savedQuote.version
+        version: savedQuote.version,
         attention_to: attentionTo,      // NUEVO
         seller_profile: profile
       }, client, qrDataUrl);
