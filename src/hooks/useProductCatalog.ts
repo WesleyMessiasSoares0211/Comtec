@@ -29,18 +29,15 @@ export function useProductCatalog() {
 
   // 2. CÁLCULOS DE ESTADÍSTICAS
   const stats = useMemo(() => {
-    if (!products) return { totalSku: 0, totalValue: 0, criticalStock: 0 };
+    if (!products) return { totalSku: 0, totalValue: 0, featuredCount: 0 };
 
     return products.reduce((acc, product) => {
-      const price = product.price || 0;
-      const stock = product.stock || 0;
-      const minStock = product.min_stock || 0;
-
       acc.totalSku++;
-      acc.totalValue += price * stock;
-      if (stock <= minStock) acc.criticalStock++;
+      // Como es un catálogo, sumamos el precio unitario base de todos los productos
+      acc.totalValue += (product.price || 0); 
+      if (product.featured) acc.featuredCount++;
       return acc;
-    }, { totalSku: 0, totalValue: 0, criticalStock: 0 });
+    }, { totalSku: 0, totalValue: 0, featuredCount: 0 });
   }, [products]);
 
   // 3. EXTRAER CATEGORÍAS
