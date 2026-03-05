@@ -11,7 +11,6 @@ import { ConfirmUpdateModal } from '../../components/ui/SecurityModals';
 import type { Product, ProductFormData } from '../../types/product';
 import { ItemType } from '../../types/product';
 
-// Mantenemos tus constantes intactas
 const CATEGORY_MODELS_DATA = {
   'PIEZAS Y BOMBAS': ['material_base', 'diametro_succion', 'tipo_sello', 'fluido_compatible'],
   'FABRICACION MECANICA': ['material', 'tolerancia_mm', 'tratamiento_termico', 'nro_plano'],
@@ -45,10 +44,10 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
 
   const [formData, setFormData] = useState<ProductFormData>(emptyState);
 
-  // EFECTO DE CARGA INICIAL (Sin cambios estructurales)
+  // EFECTO DE CARGA INICIAL
   useEffect(() => {
     if (initialData) {
-      const specs = initialData.specifications || initialData.metadata || {};
+      const specs = initialData.metadata || {}; // Todo lo extra está en metadata
       const rawEjUso = initialData.ej_uso;
       
       let descriptionText = '';
@@ -64,27 +63,26 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
 
       setFormData({
         name: initialData.name || '',
-        part_number: initialData.part_number || specs.part_number || '',
+        part_number: initialData.part_number || '',
         description: initialData.description || '',
         price: initialData.price || 0,
         image_url: initialData.image_url || '',
         datasheet_url: initialData.datasheet_url || '',
-        // MODIFICACIÓN: Aseguramos leer main_category o category por compatibilidad
-        main_category: initialData.main_category || initialData.category || '',
+        main_category: initialData.main_category || '',
         subcategory: initialData.subcategory || '',
         featured: Boolean(initialData.featured),
         ej_uso: descriptionText,
-        protocol: initialData.protocol || specs.protocol || '',
-        connectivity: initialData.connectivity || specs.connectivity || '',
+        protocol: initialData.protocol || '',
+        connectivity: initialData.connectivity || '',
         metadata: specs,
-        tipo_item: (initialData.tipo_item as ItemType) || 'producto_final'
+        // Rescatamos tipo_item desde metadata porque no es una columna de DB
+        tipo_item: (specs.tipo_item as ItemType) || 'producto_final'
       });
     }
   }, [initialData]);
 
   const isIotOrGateway = ['Sensor', 'Gateway'].includes(formData.main_category);
 
-  // MANEJO DE ARCHIVOS (Sin cambios)
   const handleFileChange = async (file: File, type: 'img' | 'doc') => {
     setUploading(prev => ({ ...prev, [type]: true }));
     const toastId = toast.loading(`Subiendo ${type === 'img' ? 'imagen' : 'documento'}...`);
@@ -124,14 +122,31 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
     const toastId = toast.loading(initialData ? 'Actualizando ficha...' : 'Registrando en catálogo...');
 
     try {
-      // PREPARACIÓN DEL PAYLOAD (MODIFICADO PARA COMPATIBILIDAD DB)
+      // 🚀 EMPAQUETADO ARQUITECTÓNICO (Separamos columnas reales de metadata)
       const finalPayload = {
-        ...formData,
-        price: Number(formData.price),
-        // Si tu DB usa 'category' además de 'main_category', guardamos en ambos para evitar conflictos
-        category: formData.main_category, 
+        // 1. Columnas nativas de Postgres
+        name: formData.name,
         main_category: formData.main_category,
-        ej_uso: showUseCase ? [{ title: useCaseTitle, industry: useCaseIndustry, description: formData.ej_uso }] : []
+        subcategory: formData.subcategory,
+        description: formData.description,
+        price: Number(formData.price),
+        image_url: formData.image_url,
+        datasheet_url: formData.datasheet_url,
+        part_number: formData.part_number,
+        protocol: formData.protocol,
+        connectivity: formData.connectivity,
+        featured: formData.featured,
+        ej_uso: showUseCase ? [{ title: useCaseTitle, industry: useCaseIndustry, description: formData.ej_uso }] : [],
+        
+        // 2. Empaquetado de Metadata (Datos variables y preparación para el futuro)
+        metadata: {
+          ...formData.metadata, // Atributos dinámicos según categoría (material, tolerancia, etc.)
+          tipo_item: formData.tipo_item, // Guardamos aquí porque no hay columna en DB
+          
+          // 🔮 Semillas para el Futuro (Proveedores y Números de Parte de Clientes)
+          supplier_id: initialData?.metadata?.supplier_id || null,
+          client_part_numbers: initialData?.metadata?.client_part_numbers || {}
+        }
       };
 
       if (initialData?.id) {
@@ -150,7 +165,6 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
     }
   };
 
-  // LAYOUT VISUAL INTACTO
   return (
     <>
       <form onSubmit={handleInitialSubmit} className="bg-slate-900/50 border border-slate-800 p-8 rounded-2xl space-y-8 shadow-2xl animate-in fade-in zoom-in duration-500">
