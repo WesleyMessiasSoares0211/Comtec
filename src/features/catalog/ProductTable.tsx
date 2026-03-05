@@ -117,6 +117,7 @@ export default function ProductTable({ products, onEdit, onDelete }: Props) {
                       </button>
                       
                       {/* CORRECCIÓN CRÍTICA: Llamada directa a onDelete sin window.confirm */}
+                      {onDelete && (
                       <button 
                         onClick={() => onDelete(product.id)}
                         className="p-2 hover:bg-red-500/10 text-slate-500 hover:text-red-400 rounded-lg transition-colors"
@@ -124,6 +125,7 @@ export default function ProductTable({ products, onEdit, onDelete }: Props) {
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
+                      )}
                     </div>
                   </td>
                 </tr>
