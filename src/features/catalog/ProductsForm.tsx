@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Package, Cpu, Save, Loader, Upload, FileText,
   CheckCircle2, Image as ImageIcon, Info, ChevronRight, Star,
-  Wifi, Zap, Building2, Tag, PlusCircle, XCircle, Loader2, X
+  Wifi, Zap, Building2, Tag, PlusCircle, XCircle, Loader2, X, BookOpen, Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { productService } from '../../services/productService';
@@ -35,6 +35,9 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
   const [useCaseTitle, setUseCaseTitle] = useState('Modernización de Planta');
   const [useCaseIndustry, setUseCaseIndustry] = useState('Industrial');
 
+  // --- NUEVO ESTADO: DICCIONARIO MINERO ---
+  const [equivalencies, setEquivalencies] = useState<{client: string, code: string}[]>([]);
+
   const emptyState: ProductFormData = {
     name: '', part_number: '', description: '', price: 0,
     image_url: '', datasheet_url: '', main_category: '', subcategory: '',
@@ -47,7 +50,7 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
   // EFECTO DE CARGA INICIAL
   useEffect(() => {
     if (initialData) {
-      const specs = initialData.metadata || {}; // Todo lo extra está en metadata
+      const specs = initialData.metadata || {};
       const rawEjUso = initialData.ej_uso;
       
       let descriptionText = '';
@@ -59,6 +62,15 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
         descriptionText = firstCase?.description || '';
       } else {
         descriptionText = typeof rawEjUso === 'string' ? rawEjUso : '';
+      }
+
+      // Desempaquetar Diccionario Minero si existe
+      if (specs.client_part_numbers) {
+        const loadedEquivalencies = Object.entries(specs.client_part_numbers).map(([client, code]) => ({
+          client,
+          code: String(code)
+        }));
+        setEquivalencies(loadedEquivalencies);
       }
 
       setFormData({
@@ -75,7 +87,6 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
         protocol: initialData.protocol || '',
         connectivity: initialData.connectivity || '',
         metadata: specs,
-        // Rescatamos tipo_item desde metadata porque no es una columna de DB
         tipo_item: (specs.tipo_item as ItemType) || 'producto_final'
       });
     }
@@ -100,6 +111,17 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
     }
   };
 
+  // --- LÓGICA DEL DICCIONARIO MINERO ---
+  const addEquivalency = () => setEquivalencies([...equivalencies, { client: '', code: '' }]);
+  const updateEquivalency = (index: number, field: 'client' | 'code', value: string) => {
+    const newEq = [...equivalencies];
+    newEq[index][field] = value;
+    setEquivalencies(newEq);
+  };
+  const removeEquivalency = (index: number) => {
+    setEquivalencies(equivalencies.filter((_, i) => i !== index));
+  };
+
   const handleInitialSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const priceNum = Number(formData.price);
@@ -122,9 +144,15 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
     const toastId = toast.loading(initialData ? 'Actualizando ficha...' : 'Registrando en catálogo...');
 
     try {
-      // 🚀 EMPAQUETADO ARQUITECTÓNICO (Separamos columnas reales de metadata)
+      // Re-empaquetamos el arreglo visual en el JSON requerido por la BBDD
+      const packedClientPartNumbers = equivalencies.reduce((acc, eq) => {
+        if (eq.client.trim() && eq.code.trim()) {
+          acc[eq.client.trim()] = eq.code.trim();
+        }
+        return acc;
+      }, {} as Record<string, string>);
+
       const finalPayload = {
-        // 1. Columnas nativas de Postgres
         name: formData.name,
         main_category: formData.main_category,
         subcategory: formData.subcategory,
@@ -138,14 +166,11 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
         featured: formData.featured,
         ej_uso: showUseCase ? [{ title: useCaseTitle, industry: useCaseIndustry, description: formData.ej_uso }] : [],
         
-        // 2. Empaquetado de Metadata (Datos variables y preparación para el futuro)
         metadata: {
-          ...formData.metadata, // Atributos dinámicos según categoría (material, tolerancia, etc.)
-          tipo_item: formData.tipo_item, // Guardamos aquí porque no hay columna en DB
-          
-          // 🔮 Semillas para el Futuro (Proveedores y Números de Parte de Clientes)
+          ...formData.metadata,
+          tipo_item: formData.tipo_item,
           supplier_id: initialData?.metadata?.supplier_id || null,
-          client_part_numbers: initialData?.metadata?.client_part_numbers || {}
+          client_part_numbers: packedClientPartNumbers // Guardamos el diccionario minero
         }
       };
 
@@ -185,6 +210,7 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* COLUMNA 1: MULTIMEDIA Y CLASIFICACIÓN */}
           <div className="space-y-6">
             <SectionHeader icon={<ImageIcon className="w-4 h-4" />} title="Multimedia y Clasificación" color="text-cyan-400" />
             <div className="grid grid-cols-2 gap-4">
@@ -201,7 +227,7 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
               </div>
               <InputField label="Nombre del Producto *" required value={formData.name} onChange={(v: string) => setFormData({...formData, name: v})} />
               <div className="grid grid-cols-2 gap-4">
-                <InputField label="N° Parte (P/N) *" required value={formData.part_number} onChange={(v: string) => setFormData({...formData, part_number: v})} />
+                <InputField label="N° Parte Oficial (P/N) *" required value={formData.part_number} onChange={(v: string) => setFormData({...formData, part_number: v})} />
                 <InputField label="Sub-Categoría" value={formData.subcategory} onChange={(v: string) => setFormData({...formData, subcategory: v})} />
               </div>
               <div className="space-y-1">
@@ -217,6 +243,7 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
             </div>
           </div>
 
+          {/* COLUMNA 2: ESPECIFICACIONES TÉCNICAS */}
           <div className="space-y-6">
             <SectionHeader icon={<Cpu className="w-4 h-4" />} title="Especificaciones Técnicas" color="text-orange-500" />
             <div className="bg-slate-950/40 p-5 rounded-xl border border-slate-800/50 min-h-[300px] space-y-4">
@@ -244,6 +271,38 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
             </div>
           </div>
 
+          {/* SECCIÓN NUEVA: DICCIONARIO MINERO */}
+          <div className="col-span-full space-y-4">
+            <SectionHeader icon={<BookOpen className="w-4 h-4" />} title="Diccionario Minero (Equivalencias CPN)" color="text-emerald-400" />
+            <div className="bg-slate-950/40 p-6 rounded-2xl border border-slate-800/50 space-y-4">
+              {equivalencies.length === 0 ? (
+                <p className="text-xs text-slate-500 italic">No hay equivalencias registradas. Útil para el importador de cotizaciones.</p>
+              ) : (
+                <div className="space-y-3">
+                  {equivalencies.map((eq, idx) => (
+                    <div key={idx} className="flex items-center gap-3">
+                      <div className="flex-1">
+                        <InputField label="Empresa / Plataforma" placeholder="Ej. BHP, SAWU, Escondida" value={eq.client} onChange={(v: string) => updateEquivalency(idx, 'client', v)} />
+                      </div>
+                      <div className="flex-1">
+                        <InputField label="N° Parte del Cliente" placeholder="Ej. 100234-BHP" value={eq.code} onChange={(v: string) => updateEquivalency(idx, 'code', v)} />
+                      </div>
+                      <div className="pt-6">
+                        <button type="button" onClick={() => removeEquivalency(idx)} className="p-2 text-slate-600 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button type="button" onClick={addEquivalency} className="flex items-center gap-2 text-xs font-bold text-emerald-500 hover:text-emerald-400 mt-2 transition-colors">
+                <PlusCircle className="w-4 h-4" /> Agregar Código Cliente
+              </button>
+            </div>
+          </div>
+
+          {/* CASOS DE USO */}
           <div className="col-span-full space-y-4">
             <button type="button" onClick={() => setShowUseCase(!showUseCase)} className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all ${showUseCase ? 'bg-cyan-500/10 border-cyan-500/50' : 'bg-slate-950/40 border-slate-800 hover:border-slate-700'}`}>
               <div className="flex items-center gap-3">
@@ -266,6 +325,7 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
               </div>
             )}
           </div>
+
           <div className="col-span-full">
             <TextArea label="Descripción Técnica Detallada *" required value={formData.description} onChange={(v: string) => setFormData({...formData, description: v})} />
           </div>
@@ -293,7 +353,7 @@ export default function ProductsForm({ initialData, onSuccess, onCancel }: Props
   );
 }
 
-// Subcomponentes (Mantenidos igual para preservar el layout)
+// Subcomponentes
 function SectionHeader({ icon, title, color }: { icon: React.ReactNode, title: string, color: string }) {
   return (
     <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
@@ -303,13 +363,13 @@ function SectionHeader({ icon, title, color }: { icon: React.ReactNode, title: s
   );
 }
 
-function InputField({ label, value, onChange, type = "text", icon, required, min, step }: any) {
+function InputField({ label, value, onChange, type = "text", icon, required, min, step, placeholder }: any) {
   return (
     <div className="group space-y-1.5">
       <label className="text-[10px] font-bold text-slate-500 uppercase ml-1 flex items-center gap-1 group-focus-within:text-cyan-500 transition-colors">
         {icon || <ChevronRight className="w-3 h-3 text-cyan-600" />} {label}
       </label>
-      <input required={required} type={type} min={min} step={step} value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 outline-none text-sm transition-all" />
+      <input placeholder={placeholder} required={required} type={type} min={min} step={step} value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 outline-none text-sm transition-all" />
     </div>
   );
 }
