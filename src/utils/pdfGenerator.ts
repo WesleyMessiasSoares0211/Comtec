@@ -22,14 +22,13 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
     const verificationUrl = `${baseUrl}/verify/${encodeURIComponent(quote.folio)}`;
     
     // --- PALETA DE COLORES CORPORATIVA (Comtec Industrial) ---
-    const colorCyan: [number, number, number] = [8, 145, 178]; // Cyan-600
+    const colorCyan: [number, number, number] = [8, 145, 178]; // Cyan-600 (Enlaces/Totales)
     const colorSlateDark: [number, number, number] = [15, 23, 42]; // Slate-900 (Encabezados)
     const colorSlateText: [number, number, number] = [51, 65, 85]; // Slate-700 (Texto general)
     const colorSlateLight: [number, number, number] = [100, 116, 139]; // Slate-500 (Textos secundarios)
     const colorBgZebra: [number, number, number] = [248, 250, 252]; // Slate-50 (Fila cebra)
 
     // --- ENCABEZADO ---
-    // Logo / Nombre Empresa
     doc.setFontSize(26);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(colorCyan[0], colorCyan[1], colorCyan[2]);
@@ -45,7 +44,6 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
     doc.setTextColor(colorSlateLight[0], colorSlateLight[1], colorSlateLight[2]);
     doc.text('www.comtecindustrial.com', 14, 33);
 
-    // Datos Folio & Revisión
     const fecha = quote.created_at 
       ? new Date(quote.created_at).toLocaleDateString('es-CL') 
       : new Date().toLocaleDateString('es-CL');
@@ -71,7 +69,6 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
       doc.text(`Validez de Oferta: ${quote.validity_days} días`, 196, 38, { align: 'right' });
     }
 
-    // Línea separadora superior
     doc.setDrawColor(226, 232, 240); // Slate-200
     doc.setLineWidth(0.5);
     doc.line(14, 44, 196, 44);
@@ -94,16 +91,12 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
     const ubicacion = [client.direccion, client.comuna, client.ciudad].filter(Boolean).join(', ');
     if (ubicacion) doc.text(ubicacion, 14, 68);
 
-    // --- CÓDIGO QR (Carpeta Digital) ---
     if (qrCodeUrl) {
       try {
-        // Recuadro sutil para el QR
         doc.setDrawColor(226, 232, 240);
         doc.setFillColor(248, 250, 252);
         doc.roundedRect(165, 48, 31, 34, 2, 2, 'FD');
-        
         doc.addImage(qrCodeUrl, 'PNG', 168, 50, 25, 25);
-        
         doc.setFontSize(6);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(colorCyan[0], colorCyan[1], colorCyan[2]);
@@ -111,22 +104,18 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
       } catch (e) { console.warn("Error renderizando QR", e); }
     }
 
-    // --- TABLA DE PRODUCTOS (AutoTable) ---
+    // --- TABLA DE PRODUCTOS (AutoTable V3.0) ---
     const items = Array.isArray(quote.items) ? quote.items : [];
 
-    // Pre-procesamos los datos para separar la descripción del link
-    const tableData = items.map(i => {
-      const isLinked = !!i.datasheet_url;
-      const descText = i.name + (isLinked ? '\n\n[ Ver Ficha Técnica ]' : '');
-      
-      return [
+    // ✅ CORRECCIÓN DUPLICIDAD (PASO 1): El cuerpo de la tabla SOLO contiene el nombre del producto.
+    // Ya no añadimos '\n\n Ver Ficha Técnica' aquí, así evitamos que se dibuje doble.
+    const tableData = items.map(i => [
         i.part_number || 'S/N', 
-        descText,
+        i.name || 'Sin Descripción', 
         i.quantity || 0, 
         `$${(i.unit_price || 0).toLocaleString('es-CL')}`, 
         `$${(i.total || 0).toLocaleString('es-CL')}`
-      ];
-    });
+    ]);
 
     autoTable(doc, {
       startY: 85,
@@ -158,21 +147,38 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
         3: { cellWidth: 28, halign: 'right' },
         4: { cellWidth: 28, halign: 'right', fontStyle: 'bold', textColor: colorSlateDark }
       },
-      // Pinta de azul el "[ Ver Ficha Técnica ]" y crea el enlace invisible
+      // ✅ CORRECCIÓN DUPLICIDAD Y ESTÉTICA (PASO 2): Usamos didDrawCell para dibujar enlace y icono ESTÉTICO una sola vez.
       didDrawCell: (data) => {
         if (data.section === 'body' && data.column.index === 1) {
           const item = items[data.row.index];
           if (item && item.datasheet_url) {
-            // Dibujamos el texto del enlace en azul brillante
+            // 🎨 Ajustes de color Cyan brillante para el enlace
             doc.setFontSize(8);
             doc.setFont('helvetica', 'bold');
             doc.setTextColor(colorCyan[0], colorCyan[1], colorCyan[2]);
-            // Calculamos la posición Y para que quede abajo del nombre del producto
-            const textLines = doc.splitTextToSize(item.name, data.cell.width - 8);
-            const linkY = data.cell.y + (textLines.length * 4) + 8;
-            doc.text('[ Ver Ficha Técnica ]', data.cell.x + 4, linkY);
-            
-            // Creamos el área clicable (toda la celda para mejor UX)
+            doc.setDrawColor(colorCyan[0], colorCyan[1], colorCyan[2]);
+            doc.setLineWidth(0.3);
+
+            // Calculamos posición Y base (justo debajo del nombre del producto)
+            const textLines = doc.splitTextToSize(item.name || '', data.cell.width - 8);
+            const startX = data.cell.x + 4;
+            // Posición Y de línea base: data.cell.y + (número líneas * altura) + padding extra.
+            const linkY = data.cell.y + (textLines.length * 4) + 8; 
+
+            // 🖌️ CORRECCIÓN ESTÉTICA: Dibujamos icono vectorial nativo (recuadro con flecha saliendo)
+            const iconSize = 3;
+            const iconPad = 1.5;
+            // Dibujar Recuadro de Enlace
+            doc.rect(startX, linkY - iconSize + 0.5, iconSize, iconSize - 0.5, 'S'); 
+            // Dibujar flecha (línea y cabeza)
+            doc.line(startX + (iconSize / 2), linkY - (iconSize / 2) + 0.5, startX + iconSize + iconPad, linkY - 1.5); 
+            doc.line(startX + iconSize + iconPad - 1, linkY - 2.5, startX + iconSize + iconPad, linkY - 1.5);
+            doc.line(startX + iconSize + iconPad - 1, linkY - 0.5, startX + iconSize + iconPad, linkY - 1.5);
+
+            // 3. Dibujar el texto azul "Ver Ficha Técnica" SIN corchetes
+            doc.text('Ver Ficha Técnica', startX + iconSize + iconPad + 1, linkY);
+
+            // UX: Creamos el área clicable de UX mejorada que cubre toda la celda de descripción
             doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, {
               url: item.datasheet_url
             });
@@ -183,8 +189,6 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
 
     // --- BLOQUE DE TOTALES ---
     const finalY = (doc as any).lastAutoTable.finalY;
-    
-    // Si la tabla terminó muy abajo, forzamos página nueva para los totales
     if (finalY > 230) doc.addPage();
     const totalsY = finalY > 230 ? 20 : finalY + 10;
     
@@ -242,21 +246,16 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
       doc.text(splitTerms, 14, textY + 5);
     }
 
-    // --- PIE DE PÁGINA (Aplicado a todas las hojas) ---
+    // --- PIE DE PÁGINA ---
     const pageCount = doc.getNumberOfPages();
     for(let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
-      
-      // Línea separadora inferior
       doc.setDrawColor(226, 232, 240);
       doc.line(14, 280, 196, 280);
-
       doc.setFontSize(7);
       doc.setTextColor(colorSlateLight[0], colorSlateLight[1], colorSlateLight[2]);
       doc.text(`Página ${i} de ${pageCount}`, 196, 285, { align: 'right' });
-      
       doc.text(`Documento generado por Sistema Comtec Industrial. Para verificar autenticidad escanee el código QR o visite:`, 14, 285);
-      
       doc.setTextColor(colorCyan[0], colorCyan[1], colorCyan[2]);
       doc.textWithLink(verificationUrl, 14, 289, { url: verificationUrl });
     }
