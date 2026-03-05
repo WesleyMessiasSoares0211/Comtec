@@ -50,7 +50,7 @@ export function useProducts() {
         }
         return;
       }
-      setProducts(prev => prev ? prev.filter(p => p.id !== id) : null);
+      
       toast.success("Producto eliminado correctamente");
       
       // RECARGA COMPLETA: Volvemos a pedir los datos a la DB para asegurar sincronía
