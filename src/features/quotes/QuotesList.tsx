@@ -11,7 +11,7 @@ import { generateQuotePDF } from '../../utils/pdfGenerator';
 import QRCode from 'qrcode';
 import { quoteService } from '../../services/quoteService';
 import QuoteTelemetryModal from './QuoteTelemetryModal';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../../hooks/useAuth';
 
 interface QuoteWithClient {
   id: string;
