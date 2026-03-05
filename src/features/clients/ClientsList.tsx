@@ -10,19 +10,19 @@ import { toast } from 'sonner';
 interface ClientsListProps {
   onEditClient: (client: Client) => void;
   onViewQuotes: (client: Client) => void;
-  onViewDetails: (client: Client) => void; // Prop para abrir la Ficha 360
+  onViewDetails?: (client: Client) => void; // Lo hacemos opcional para no romper el AdminDashboard
 }
 
 export default function ClientsList({ onEditClient, onViewQuotes, onViewDetails }: ClientsListProps) {
-  const { clients, loading, deleteClient } = useClients();
-  const [searchTerm, setSearchTerm] = useState('');
+  // EXTRAEMOS searchTerm y setSearchTerm DEL HOOK (No usamos useState local para esto)
+  const { clients, loading, deleteClient, searchTerm, setSearchTerm } = useClients();
   
-  // Estados de Filtros
+  // Estados de Filtros Locales (Ciudad y Etiquetas)
   const [selectedTag, setSelectedTag] = useState<string>('todas');
   const [selectedCity, setSelectedCity] = useState<string>('todas');
   const [showFilters, setShowFilters] = useState(false);
 
-  // 1. Obtener opciones únicas para los filtros dinámicamente
+  // Obtener opciones únicas para los filtros dinámicamente
   const uniqueTags = useMemo(() => {
     const tags = new Set<string>();
     clients.forEach(c => c.tags?.forEach(t => tags.add(t)));
@@ -37,16 +37,12 @@ export default function ClientsList({ onEditClient, onViewQuotes, onViewDetails 
     return Array.from(cities).sort();
   }, [clients]);
 
-  // 2. Lógica de Filtrado Combinada
+  // Lógica de Filtrado Combinada (Solo filtramos Tags y Ciudad localmente)
+  // El texto ya lo filtró la Base de Datos gracias al Debounce!
   const filteredClients = clients.filter(client => {
-    const matchesSearch = 
-      client.razon_social.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.rut.toLowerCase().includes(searchTerm.toLowerCase());
-    
     const matchesTag = selectedTag === 'todas' || client.tags?.includes(selectedTag);
     const matchesCity = selectedCity === 'todas' || client.ciudad === selectedCity;
-
-    return matchesSearch && matchesTag && matchesCity;
+    return matchesTag && matchesCity;
   });
 
   const handleDelete = async (id: string) => {
@@ -61,7 +57,7 @@ export default function ClientsList({ onEditClient, onViewQuotes, onViewDetails 
   };
 
   const clearFilters = () => {
-    setSearchTerm('');
+    setSearchTerm(''); // Esto ahora le avisa al hook global
     setSelectedTag('todas');
     setSelectedCity('todas');
   };
@@ -173,13 +169,13 @@ export default function ClientsList({ onEditClient, onViewQuotes, onViewDetails 
                 {/* ÁREA INTERACTIVA: Icono y Nombre */}
                 <div className="flex items-center gap-4 flex-1 min-w-0">
                   <div 
-                    onClick={() => onViewDetails(client)}
+                    onClick={() => onViewDetails && onViewDetails(client)}
                     className="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-800 to-slate-950 border border-slate-700 flex items-center justify-center text-cyan-500 cursor-pointer hover:scale-110 hover:border-cyan-500/50 transition-all shadow-inner"
                   >
                     <Building2 className="w-6 h-6" />
                   </div>
                   <div 
-                    onClick={() => onViewDetails(client)}
+                    onClick={() => onViewDetails && onViewDetails(client)}
                     className="cursor-pointer group/name flex-1 min-w-0"
                   >
                     <h3 className="text-white font-bold text-base leading-tight truncate group-hover/name:text-cyan-400 transition-colors">
