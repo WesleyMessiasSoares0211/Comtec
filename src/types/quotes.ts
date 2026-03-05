@@ -1,7 +1,8 @@
-export type QuoteStatus = 'Borrador' | 'Pendiente' | 'Aceptada' | 'Rechazada' | 'Facturada' | 'En Produccion';
+export type QuoteStatus = 'Borrador' | 'Pendiente' | 'Pendiente de Aprobacion' | 'Aceptada' | 'Rechazada' | 'Facturada' | 'En Produccion';
 
 export interface QuoteItem {
   id?: string;
+  product_id?: string | null; // null si es genérico
   name: string;
   part_number: string;
   quantity: number;
@@ -9,6 +10,12 @@ export interface QuoteItem {
   total: number;
   is_manual?: boolean;
   technical_spec_url?: string;
+  
+  // --- NUEVOS CAMPOS: FASE 1.5 ---
+  cost?: number;        // Costo base del producto
+  margin_pct?: number;  // Margen de ganancia aplicado
+  comment?: string;     // Comentario específico del ítem
+  is_generic?: boolean; // Flag para saber si es fuera de catálogo
   
   // Preparación para Fase 2 (Producción)
   horas_maquina?: number;
@@ -19,6 +26,7 @@ export interface Quote {
   id: string;
   folio: string;
   client_id: string;
+  attention_to?: string; // Para el cliente genérico
   estado: QuoteStatus;
   items: QuoteItem[];
   subtotal_neto: number;
