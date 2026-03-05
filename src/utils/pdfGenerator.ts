@@ -12,7 +12,7 @@ interface QuoteData {
   notes?: string;
   terms?: string;
   validity_days?: number;
-  version?: number; // Agregamos soporte visual para la versión
+  version?: number;
 }
 
 export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: string): boolean => {
@@ -21,113 +21,158 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
     const baseUrl = window.location.origin;
     const verificationUrl = `${baseUrl}/verify/${encodeURIComponent(quote.folio)}`;
     
-    // --- COLORES ---
-    const colorCyan = [0, 157, 224];
-    const colorSlate = [15, 23, 42];
-    const colorGray = [100, 116, 139];
+    // --- PALETA DE COLORES CORPORATIVA (Comtec Industrial) ---
+    const colorCyan: [number, number, number] = [8, 145, 178]; // Cyan-600
+    const colorSlateDark: [number, number, number] = [15, 23, 42]; // Slate-900 (Encabezados)
+    const colorSlateText: [number, number, number] = [51, 65, 85]; // Slate-700 (Texto general)
+    const colorSlateLight: [number, number, number] = [100, 116, 139]; // Slate-500 (Textos secundarios)
+    const colorBgZebra: [number, number, number] = [248, 250, 252]; // Slate-50 (Fila cebra)
 
     // --- ENCABEZADO ---
-    doc.setFontSize(24);
+    // Logo / Nombre Empresa
+    doc.setFontSize(26);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(colorCyan[0], colorCyan[1], colorCyan[2]);
-    doc.text('COMTEC', 14, 20);
+    doc.text('COMTEC', 14, 22);
     
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(colorGray[0], colorGray[1], colorGray[2]);
-    doc.text('INDUSTRIAL SPA', 14, 25);
+    doc.setTextColor(colorSlateDark[0], colorSlateDark[1], colorSlateDark[2]);
+    doc.text('INDUSTRIAL SOLUTIONS', 14, 28);
+    
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(colorSlateLight[0], colorSlateLight[1], colorSlateLight[2]);
+    doc.text('www.comtecindustrial.com', 14, 33);
 
-    // Datos Folio (Con soporte para mostrar Revisiones)
+    // Datos Folio & Revisión
     const fecha = quote.created_at 
       ? new Date(quote.created_at).toLocaleDateString('es-CL') 
       : new Date().toLocaleDateString('es-CL');
 
-    doc.setFontSize(14);
-    doc.setTextColor(0);
-    // Si hay versión > 1, la mostramos
     const folioText = quote.version && quote.version > 1 
-      ? `COTIZACIÓN (Rev. ${quote.version})` 
-      : `COTIZACIÓN`;
+      ? `COTIZACIÓN COMERCIAL (Rev. ${quote.version})` 
+      : `COTIZACIÓN COMERCIAL`;
       
-    doc.text(folioText, 196, 20, { align: 'right' });
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(colorSlateDark[0], colorSlateDark[1], colorSlateDark[2]);
+    doc.text(folioText, 196, 22, { align: 'right' });
     
-    doc.setFontSize(10);
-    doc.setTextColor(colorGray[0], colorGray[1], colorGray[2]);
-    doc.text(`# ${quote.folio}`, 196, 26, { align: 'right' });
-    doc.text(`Fecha: ${fecha}`, 196, 31, { align: 'right' });
-    
+    doc.setFontSize(11);
+    doc.setTextColor(colorCyan[0], colorCyan[1], colorCyan[2]);
+    doc.text(`Nº ${quote.folio}`, 196, 28, { align: 'right' });
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(colorSlateText[0], colorSlateText[1], colorSlateText[2]);
+    doc.text(`Fecha de Emisión: ${fecha}`, 196, 33, { align: 'right' });
     if (quote.validity_days) {
-      doc.text(`Validez: ${quote.validity_days} días`, 196, 36, { align: 'right' });
+      doc.text(`Validez de Oferta: ${quote.validity_days} días`, 196, 38, { align: 'right' });
     }
 
-    doc.setDrawColor(200);
-    doc.line(14, 40, 196, 40);
+    // Línea separadora superior
+    doc.setDrawColor(226, 232, 240); // Slate-200
+    doc.setLineWidth(0.5);
+    doc.line(14, 44, 196, 44);
 
-    // --- CLIENTE ---
-    doc.setFontSize(9);
-    doc.setTextColor(colorGray[0], colorGray[1], colorGray[2]);
-    doc.text('PREPARADO PARA:', 14, 50);
-
-    doc.setFontSize(12);
-    doc.setTextColor(0);
+    // --- DATOS DEL CLIENTE ---
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
-    doc.text(client.razon_social || 'Cliente General', 14, 56);
+    doc.setTextColor(colorSlateLight[0], colorSlateLight[1], colorSlateLight[2]);
+    doc.text('PREPARADO EXCLUSIVAMENTE PARA:', 14, 52);
+
+    doc.setFontSize(11);
+    doc.setTextColor(colorSlateDark[0], colorSlateDark[1], colorSlateDark[2]);
+    doc.text(client.razon_social || 'Cliente General', 14, 58);
     
-    doc.setFontSize(10);
+    doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(colorSlate[0], colorSlate[1], colorSlate[2]);
-    doc.text(`RUT: ${client.rut || '---'}`, 14, 62);
+    doc.setTextColor(colorSlateText[0], colorSlateText[1], colorSlateText[2]);
+    doc.text(`RUT Comercial: ${client.rut || 'No Registrado'}`, 14, 63);
     
     const ubicacion = [client.direccion, client.comuna, client.ciudad].filter(Boolean).join(', ');
-    if (ubicacion) doc.text(ubicacion, 14, 67);
+    if (ubicacion) doc.text(ubicacion, 14, 68);
 
-    // --- QR ---
+    // --- CÓDIGO QR (Carpeta Digital) ---
     if (qrCodeUrl) {
       try {
-        doc.addImage(qrCodeUrl, 'PNG', 165, 42, 25, 25);
+        // Recuadro sutil para el QR
+        doc.setDrawColor(226, 232, 240);
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(165, 48, 31, 34, 2, 2, 'FD');
+        
+        doc.addImage(qrCodeUrl, 'PNG', 168, 50, 25, 25);
+        
         doc.setFontSize(6);
-        doc.setTextColor(colorGray[0], colorGray[1], colorGray[2]);
-        doc.text("Carpeta Digital", 177.5, 69, { align: 'center' });
-      } catch (e) { console.warn(e); }
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(colorCyan[0], colorCyan[1], colorCyan[2]);
+        doc.text("VERIFICAR ONLINE", 180.5, 78, { align: 'center' });
+      } catch (e) { console.warn("Error renderizando QR", e); }
     }
 
-    // --- TABLA ---
+    // --- TABLA DE PRODUCTOS (AutoTable) ---
     const items = Array.isArray(quote.items) ? quote.items : [];
 
-    autoTable(doc, {
-      startY: 80,
-      head: [['Cód.', 'Descripción / Ficha', 'Cant.', 'Precio Unit.', 'Total']],
-      body: items.map(i => [
-        i.part_number || '-', 
-        // CORRECCIÓN: Usamos caracteres ASCII ">>" en lugar del emoji para evitar error de codificación
-        i.name + (i.datasheet_url ? '\n>> Ver Ficha Técnica' : ''), 
+    // Pre-procesamos los datos para separar la descripción del link
+    const tableData = items.map(i => {
+      const isLinked = !!i.datasheet_url;
+      const descText = i.name + (isLinked ? '\n\n[ Ver Ficha Técnica ]' : '');
+      
+      return [
+        i.part_number || 'S/N', 
+        descText,
         i.quantity || 0, 
         `$${(i.unit_price || 0).toLocaleString('es-CL')}`, 
         `$${(i.total || 0).toLocaleString('es-CL')}`
-      ]),
-      theme: 'grid',
+      ];
+    });
+
+    autoTable(doc, {
+      startY: 85,
+      head: [['N° Parte', 'Descripción Técnica', 'Cant.', 'Precio Unit.', 'Total Neto']],
+      body: tableData,
+      theme: 'plain',
       headStyles: { 
-        fillColor: colorSlate, 
+        fillColor: colorSlateDark, 
         textColor: 255, 
         fontStyle: 'bold',
+        fontSize: 9,
         halign: 'center'
       },
-      styles: { 
+      bodyStyles: { 
         fontSize: 9, 
+        textColor: colorSlateText,
         cellPadding: 4,
-        valign: 'middle'
+        valign: 'middle',
+        lineColor: [226, 232, 240], // Slate-200
+        lineWidth: 0.1
+      },
+      alternateRowStyles: {
+        fillColor: colorBgZebra
       },
       columnStyles: {
-        0: { cellWidth: 25, fontStyle: 'bold', textColor: [0, 100, 200] },
+        0: { cellWidth: 35, fontStyle: 'bold', textColor: colorSlateDark },
         1: { cellWidth: 'auto' },
-        2: { cellWidth: 15, halign: 'center' },
-        3: { cellWidth: 25, halign: 'right' },
-        4: { cellWidth: 25, halign: 'right', fontStyle: 'bold' }
+        2: { cellWidth: 15, halign: 'center', fontStyle: 'bold' },
+        3: { cellWidth: 28, halign: 'right' },
+        4: { cellWidth: 28, halign: 'right', fontStyle: 'bold', textColor: colorSlateDark }
       },
+      // Pinta de azul el "[ Ver Ficha Técnica ]" y crea el enlace invisible
       didDrawCell: (data) => {
         if (data.section === 'body' && data.column.index === 1) {
           const item = items[data.row.index];
           if (item && item.datasheet_url) {
+            // Dibujamos el texto del enlace en azul brillante
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(colorCyan[0], colorCyan[1], colorCyan[2]);
+            // Calculamos la posición Y para que quede abajo del nombre del producto
+            const textLines = doc.splitTextToSize(item.name, data.cell.width - 8);
+            const linkY = data.cell.y + (textLines.length * 4) + 8;
+            doc.text('[ Ver Ficha Técnica ]', data.cell.x + 4, linkY);
+            
+            // Creamos el área clicable (toda la celda para mejor UX)
             doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, {
               url: item.datasheet_url
             });
@@ -136,61 +181,84 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
       }
     });
 
-    // --- TOTALES ---
-    const finalY = (doc as any).lastAutoTable.finalY + 10;
-    if (finalY > 240) doc.addPage();
-    const totalsY = finalY > 240 ? 20 : finalY;
+    // --- BLOQUE DE TOTALES ---
+    const finalY = (doc as any).lastAutoTable.finalY;
     
-    doc.setFontSize(10);
-    doc.setTextColor(colorSlate[0], colorSlate[1], colorSlate[2]);
-    doc.text('Subtotal Neto:', 140, totalsY);
-    doc.text(`$${Number(quote.subtotal_neto).toLocaleString('es-CL')}`, 196, totalsY, { align: 'right' });
+    // Si la tabla terminó muy abajo, forzamos página nueva para los totales
+    if (finalY > 230) doc.addPage();
+    const totalsY = finalY > 230 ? 20 : finalY + 10;
     
-    doc.text('IVA (19%):', 140, totalsY + 6);
-    doc.text(`$${Number(quote.iva).toLocaleString('es-CL')}`, 196, totalsY + 6, { align: 'right' });
+    // Caja de totales elegante
+    doc.setDrawColor(226, 232, 240);
+    doc.setFillColor(248, 250, 252);
+    doc.rect(130, totalsY, 66, 32, 'F');
+    doc.line(130, totalsY, 196, totalsY);
     
-    doc.setFontSize(12);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(colorSlateText[0], colorSlateText[1], colorSlateText[2]);
+    doc.text('Subtotal Neto:', 135, totalsY + 8);
+    doc.text(`$${Number(quote.subtotal_neto).toLocaleString('es-CL')}`, 192, totalsY + 8, { align: 'right' });
+    
+    doc.text('IVA (19%):', 135, totalsY + 15);
+    doc.text(`$${Number(quote.iva).toLocaleString('es-CL')}`, 192, totalsY + 15, { align: 'right' });
+    
+    doc.setDrawColor(203, 213, 225); // Slate-300
+    doc.line(135, totalsY + 19, 192, totalsY + 19);
+
+    doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(colorCyan[0], colorCyan[1], colorCyan[2]);
-    doc.text('TOTAL:', 140, totalsY + 14);
-    doc.text(`$${Number(quote.total_bruto).toLocaleString('es-CL')}`, 196, totalsY + 14, { align: 'right' });
+    doc.text('TOTAL GENERAL:', 135, totalsY + 26);
+    doc.text(`$${Number(quote.total_bruto).toLocaleString('es-CL')}`, 192, totalsY + 26, { align: 'right' });
 
-    // --- LEGALES ---
-    let textY = totalsY + 25;
+    // --- NOTAS Y LEGALES ---
+    let textY = totalsY + 40;
     
     if (quote.notes) {
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(colorSlate[0], colorSlate[1], colorSlate[2]);
-      doc.text('OBSERVACIONES:', 14, textY);
-      doc.setFont('helvetica', 'normal');
+      if (textY > 260) { doc.addPage(); textY = 20; }
       doc.setFontSize(8);
-      doc.setTextColor(80);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(colorSlateDark[0], colorSlateDark[1], colorSlateDark[2]);
+      doc.text('OBSERVACIONES DE LA OFERTA:', 14, textY);
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(colorSlateText[0], colorSlateText[1], colorSlateText[2]);
       const splitNotes = doc.splitTextToSize(quote.notes, 180);
       doc.text(splitNotes, 14, textY + 5);
-      textY += (splitNotes.length * 4) + 12;
+      textY += (splitNotes.length * 4) + 10;
     }
 
     if (quote.terms) {
-      if (textY > 250) { doc.addPage(); textY = 20; }
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(colorSlate[0], colorSlate[1], colorSlate[2]);
-      doc.text('TÉRMINOS Y CONDICIONES:', 14, textY);
-      doc.setFont('helvetica', 'normal');
+      if (textY > 260) { doc.addPage(); textY = 20; }
       doc.setFontSize(8);
-      doc.setTextColor(80);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(colorSlateDark[0], colorSlateDark[1], colorSlateDark[2]);
+      doc.text('TÉRMINOS Y CONDICIONES COMERCIALES:', 14, textY);
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(colorSlateText[0], colorSlateText[1], colorSlateText[2]);
       const splitTerms = doc.splitTextToSize(quote.terms, 180);
       doc.text(splitTerms, 14, textY + 5);
     }
 
+    // --- PIE DE PÁGINA (Aplicado a todas las hojas) ---
     const pageCount = doc.getNumberOfPages();
     for(let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
-      doc.setFontSize(8);
-      doc.setTextColor(150);
+      
+      // Línea separadora inferior
+      doc.setDrawColor(226, 232, 240);
+      doc.line(14, 280, 196, 280);
+
+      doc.setFontSize(7);
+      doc.setTextColor(colorSlateLight[0], colorSlateLight[1], colorSlateLight[2]);
       doc.text(`Página ${i} de ${pageCount}`, 196, 285, { align: 'right' });
-      doc.textWithLink(`Verificación: ${verificationUrl}`, 14, 285, { url: verificationUrl });
+      
+      doc.text(`Documento generado por Sistema Comtec Industrial. Para verificar autenticidad escanee el código QR o visite:`, 14, 285);
+      
+      doc.setTextColor(colorCyan[0], colorCyan[1], colorCyan[2]);
+      doc.textWithLink(verificationUrl, 14, 289, { url: verificationUrl });
     }
 
     const safeFolio = quote.folio.replace(/[^a-z0-9]/gi, '_');
