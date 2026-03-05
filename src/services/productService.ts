@@ -1,11 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { Product, ProductFormData } from '../types/product';
-// NUEVA IMPORTACIÓN: Traemos el servicio de almacenamiento
 import { storageService } from './storageService';
 
-/**
- * Normaliza el campo ej_uso para que siempre sea un Array de Objetos
- */
 const formatEjUsoToJSONB = (val: any): any[] => {
   if (!val) return [];
   if (Array.isArray(val)) {
@@ -29,21 +25,28 @@ const formatEjUsoToJSONB = (val: any): any[] => {
 };
 
 export const productService = {
-  // --- FUNCIÓN AUXILIAR PARA RECORTAR LA URL ---
-  // Transforma: "https://.../public/product-images/123.jpg" -> "123.jpg"
+  
   extractFilePath(url: string, bucketName: string): string | null {
     if (!url) return null;
-    if (!url.startsWith('http')) return url; // Si ya es un nombre corto, lo devuelve igual
+    if (!url.startsWith('http')) {
+      console.log(`[Extractor] La URL ya es un path corto: ${url}`);
+      return url;
+    }
+    
+    // Rastreamos qué URL está intentando cortar
+    console.log(`[Extractor] Intentando cortar URL completa: ${url}`);
     
     const separator = `/public/${bucketName}/`;
     const parts = url.split(separator);
     
-    // Si encuentra el separador, devuelve la segunda mitad (el nombre del archivo)
-    return parts.length > 1 ? parts[1] : null;
+    const result = parts.length > 1 ? parts[1] : null;
+    console.log(`[Extractor] Resultado del corte: ${result}`);
+    return result;
   },
 
   async create(formData: ProductFormData): Promise<Product> {
-    const basePayload: any = {
+    // Ya no intentamos enviar tipo_item para evitar el Error 400 en la consola
+    const payload: any = {
       name: formData.name,
       main_category: formData.main_category,
       subcategory: formData.subcategory || '',
@@ -59,31 +62,18 @@ export const productService = {
       metadata: formData.metadata || {}
     };
 
-    try {
-      const fullPayload = { ...basePayload, tipo_item: formData.tipo_item || 'producto_final' };
-      const { data, error } = await supabase.from('products').insert([fullPayload]).select().single();
-
-      if (error) {
-        if (error.message.includes('tipo_item') || error.code === 'PGRST204') {
-          console.warn('⚠️ Cache DB: Creando producto sin clasificación tipo_item.');
-          const { data: fallbackData, error: fallbackError } = await supabase.from('products').insert([basePayload]).select().single();
-          if (fallbackError) throw fallbackError;
-          return fallbackData;
-        }
-        throw error;
-      }
-      return data;
-    } catch (error) {
+    const { data, error } = await supabase.from('products').insert([payload]).select().single();
+    if (error) {
       console.error("Error creating product:", error);
       throw error;
     }
+    return data;
   },
 
   async update(id: string, formData: Partial<ProductFormData>): Promise<Product> {
-    // 0. ANTES DE ACTUALIZAR: Rescatamos el producto original para comparar si cambiaron los archivos
     const existingProduct = await this.getById(id);
 
-    const basePayload: any = {
+    const payload: any = {
       name: formData.name,
       main_category: formData.main_category,
       subcategory: formData.subcategory,
@@ -97,50 +87,30 @@ export const productService = {
       datasheet_url: formData.datasheet_url || formData.metadata?.datasheet_url || '',
     };
 
-    if (formData.ej_uso !== undefined) basePayload.ej_uso = formatEjUsoToJSONB(formData.ej_uso);
-    if (formData.metadata) basePayload.metadata = formData.metadata;
+    if (formData.ej_uso !== undefined) payload.ej_uso = formatEjUsoToJSONB(formData.ej_uso);
+    if (formData.metadata) payload.metadata = formData.metadata;
 
-    try {
-      let resultData;
-      const fullPayload = { ...basePayload, tipo_item: formData.tipo_item || 'producto_final' };
-      const { data, error } = await supabase.from('products').update(fullPayload).eq('id', id).select().single();
-
-      if (error) {
-        if (error.message.includes('tipo_item') || error.code === 'PGRST204') {
-          console.warn('⚠️ Cache DB: Actualizando producto sin clasificación tipo_item.');
-          const { data: fallbackData, error: fallbackError } = await supabase.from('products').update(basePayload).eq('id', id).select().single();
-          if (fallbackError) throw fallbackError;
-          resultData = fallbackData;
-        } else {
-          throw error;
-        }
-      } else {
-        resultData = data;
-      }
-
-      // 1. DESPUÉS DE ACTUALIZAR EXITOSAMENTE: Limpieza de archivos antiguos usando extractFilePath
-      if (existingProduct) {
-        try {
-          // Si tenía foto, y la nueva foto es diferente o nula, borramos la antigua
-          if (existingProduct.image_url && existingProduct.image_url !== resultData.image_url) {
-            const imagePath = this.extractFilePath(existingProduct.image_url, 'product-images');
-            if (imagePath) await storageService.deleteFile(imagePath, 'product-images');
-          }
-          // Si tenía PDF, y el nuevo PDF es diferente o nulo, borramos el antiguo
-          if (existingProduct.datasheet_url && existingProduct.datasheet_url !== resultData.datasheet_url) {
-            const pdfPath = this.extractFilePath(existingProduct.datasheet_url, 'tech-specs');
-            if (pdfPath) await storageService.deleteFile(pdfPath, 'tech-specs');
-          }
-        } catch (cleanupError) {
-          console.warn("Atención: No se pudo limpiar el archivo huérfano (quizás ya no existía en Storage):", cleanupError);
-        }
-      }
-
-      return resultData;
-    } catch (error) {
+    const { data, error } = await supabase.from('products').update(payload).eq('id', id).select().single();
+    if (error) {
       console.error("Error updating product:", error);
       throw error;
     }
+
+    if (existingProduct) {
+      try {
+        if (existingProduct.image_url && existingProduct.image_url !== data.image_url) {
+          const imagePath = this.extractFilePath(existingProduct.image_url, 'product-images');
+          if (imagePath) await storageService.deleteFile(imagePath, 'product-images');
+        }
+        if (existingProduct.datasheet_url && existingProduct.datasheet_url !== data.datasheet_url) {
+          const pdfPath = this.extractFilePath(existingProduct.datasheet_url, 'tech-specs');
+          if (pdfPath) await storageService.deleteFile(pdfPath, 'tech-specs');
+        }
+      } catch (cleanupError) {
+        console.warn("Error silencioso limpiando archivo huérfano:", cleanupError);
+      }
+    }
+    return data;
   },
 
   async getAll(): Promise<Product[]> {
@@ -156,33 +126,43 @@ export const productService = {
   },
 
   async delete(id: string): Promise<void> {
-    // 1. Rescatamos el producto antes de borrarlo de Postgres para saber qué archivos tenía
+    console.log(`[DELETE] Iniciando proceso para el producto ID: ${id}`);
+    
+    // 1. Rescatamos el producto
     const existingProduct = await this.getById(id);
+    console.log(`[DELETE] Producto recuperado de DB:`, existingProduct);
 
-    // 2. Borramos el producto de la base de datos Postgres
+    // 2. Borramos de Postgres
     const { error } = await supabase.from('products').delete().eq('id', id);
     if (error) throw error;
+    console.log(`[DELETE] Eliminado de la base de datos relacional con éxito.`);
 
-    // 3. Destruimos los archivos enviando SOLO el nombre interno (path)
+    // 3. Limpieza de Storage
     if (existingProduct) {
       try {
         if (existingProduct.image_url) {
+          console.log(`[DELETE] Procesando imagen original...`);
           const imagePath = this.extractFilePath(existingProduct.image_url, 'product-images');
           if (imagePath) {
             await storageService.deleteFile(imagePath, 'product-images');
             console.log("✅ Imagen eliminada exitosamente del bucket");
+          } else {
+             console.log("❌ No se pudo extraer el path de la imagen.");
           }
         }
         
         if (existingProduct.datasheet_url) {
+          console.log(`[DELETE] Procesando PDF original...`);
           const pdfPath = this.extractFilePath(existingProduct.datasheet_url, 'tech-specs');
           if (pdfPath) {
             await storageService.deleteFile(pdfPath, 'tech-specs');
             console.log("✅ PDF eliminado exitosamente del bucket");
+          } else {
+             console.log("❌ No se pudo extraer el path del PDF.");
           }
         }
       } catch (cleanupError) {
-        console.error("❌ Error limpiando archivos de Storage:", cleanupError);
+        console.error("❌ Error CRÍTICO limpiando archivos de Storage:", cleanupError);
       }
     }
   }
