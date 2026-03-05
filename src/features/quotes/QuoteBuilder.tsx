@@ -684,7 +684,7 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
 
       {showPreview && selectedClient && (
         <QuotePreview 
-          client={selectedClientId === GENERIC_CLIENT_ID ? { ...selectedClient, razon_social: `ATN: ${attentionTo}`, rut: 'Contado' } : selectedClient}
+          client={selectedClientId === GENERIC_CLIENT_ID ? { ...selectedClient, razon_social: 'CLIENTE GENÉRICO / CONTADO', rut: 'Contado' } : selectedClient}
           items={items}
           totals={totals}
           onClose={() => setShowPreview(false)}
