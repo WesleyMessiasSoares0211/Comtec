@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { QRCodeSVG } from 'qrcode.react'; // Para visualización en pantalla
-import QRCode from 'qrcode'; // Para generación lógica del PDF
-import { FileDown, X, FileText, Loader2, FileCheck } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { QRCodeSVG } from 'qrcode.react'; 
+import QRCode from 'qrcode'; 
+import { FileDown, X, FileText, Loader2, FileCheck, AlertTriangle } from 'lucide-react';
 import { quoteService } from '../../services/quoteService';
+import { supabase } from '../../lib/supabase'; // Importante para traer el perfil del vendedor
 import { toast } from 'sonner';
 import { Client } from '../../types/client';
 import { QuoteItem } from '../../types/quotes';
@@ -13,7 +14,6 @@ interface Props {
   items: QuoteItem[];
   totals: { subtotal: number; iva: number; total: number };
   onClose: () => void;
-  // Nuevos Props V2
   notes?: string;
   terms?: string;
   validityDays?: number;
@@ -21,16 +21,37 @@ interface Props {
   nextVersion?: number;
   parentQuoteId?: string;
   onSuccess?: () => void;
+  
+  // Nuevos Props V2
+  attentionTo?: string;
+  requiresApproval?: boolean;
 }
 
 export default function QuotePreview({ 
   client, items, totals, onClose, 
   notes, terms, validityDays,
-  existingFolio, nextVersion, parentQuoteId, onSuccess 
+  existingFolio, nextVersion, parentQuoteId, onSuccess,
+  attentionTo, requiresApproval
 }: Props) {
   const [isSaving, setIsSaving] = useState(false);
+  const [profile, setProfile] = useState<any>(null);
 
-  // Fecha y URL para la vista previa (visual)
+  // Buscar los datos del vendedor logueado para el pie de firma
+  useEffect(() => {
+    const fetchProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('nombre_completo, email, telefono')
+          .eq('id', user.id)
+          .single();
+        setProfile(data);
+      }
+    };
+    fetchProfile();
+  }, []);
+
   const tempDate = new Date().toLocaleDateString('es-CL');
   const baseUrl = window.location.origin;
   const previewUrl = `${baseUrl}/quote/preview/docs`; 
@@ -40,8 +61,9 @@ export default function QuotePreview({
     setIsSaving(true);
     
     try {
-      // 1. Guardar en Base de Datos
-      const savedQuote = await quoteService.create({
+      // 1. Guardar en Base de Datos (Inyectamos los nuevos campos)
+      // Nota: Forzamos el tipo (as any) temporalmente hasta que actualicemos la interfaz en quoteService.ts
+      const payload: any = {
         client_id: client.id,
         items: items,
         subtotal_neto: totals.subtotal,
@@ -52,22 +74,27 @@ export default function QuotePreview({
         validity_days: validityDays,
         version: nextVersion,
         folio: existingFolio,
-        parent_quote_id: parentQuoteId
-      });
+        parent_quote_id: parentQuoteId,
+        attention_to: attentionTo || null, 
+        estado_sugerido: requiresApproval ? 'Pendiente de Aprobacion' : 'Pendiente' // Flag para el backend
+      };
 
-      // 2. Generar QR Real apuntando a la Carpeta Digital
-      // CORRECCIÓN CRÍTICA: Usamos el ID único (UUID) en lugar del folio para evitar colapso en revisiones
+      const savedQuote = await quoteService.create(payload);
+
+      // Si requiere aprobación, detenemos el proceso aquí (NO generamos el PDF oficial)
+      if (requiresApproval) {
+        toast.success(`Cotización guardada como borrador. Requiere aprobación de Jefatura por margen menor al 15%.`);
+        if (onSuccess) onSuccess();
+        onClose();
+        return;
+      }
+
+      // 2. Generar QR Real (Solo si se aprueba/emite)
       const docsUrl = `${baseUrl}/quote/docs?id=${savedQuote.id}`;
-      
       let qrDataUrl = '';
       try {
         qrDataUrl = await QRCode.toDataURL(docsUrl, {
-          width: 200,
-          margin: 1,
-          color: {
-            dark: '#000000',
-            light: '#ffffff'
-          }
+          width: 200, margin: 1, color: { dark: '#000000', light: '#ffffff' }
         });
       } catch (qrErr) {
         console.warn("Error generando código QR para PDF:", qrErr);
@@ -123,10 +150,10 @@ export default function QuotePreview({
             <button 
               onClick={handleEmit}
               disabled={isSaving}
-              className="bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-lg shadow-cyan-900/20 active:scale-95 disabled:opacity-50"
+              className={`${requiresApproval ? 'bg-orange-600 hover:bg-orange-500 shadow-orange-900/20' : 'bg-cyan-600 hover:bg-cyan-500 shadow-cyan-900/20'} text-white px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-lg active:scale-95 disabled:opacity-50`}
             >
-              {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
-              {isSaving ? 'PROCESANDO...' : 'EMITIR Y DESCARGAR'}
+              {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : (requiresApproval ? <AlertTriangle className="w-4 h-4" /> : <FileDown className="w-4 h-4" />)}
+              {isSaving ? 'PROCESANDO...' : (requiresApproval ? 'SOLICITAR APROBACIÓN' : 'EMITIR Y DESCARGAR')}
             </button>
             <button onClick={onClose} disabled={isSaving} className="bg-slate-800 hover:bg-slate-700 text-slate-400 p-2 rounded-xl transition-colors">
               <X className="w-5 h-5" />
@@ -144,7 +171,9 @@ export default function QuotePreview({
               <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase">Industrial Solutions</p>
             </div>
             <div className="text-right">
-              <div className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-[10px] font-bold mb-2 inline-block uppercase">Borrador</div>
+              <div className={`px-3 py-1 rounded-full text-[10px] font-bold mb-2 inline-block uppercase ${requiresApproval ? 'bg-orange-100 text-orange-700' : 'bg-amber-100 text-amber-700'}`}>
+                {requiresApproval ? 'Borrador - Bloqueado' : 'Borrador'}
+              </div>
               <p className="text-sm text-slate-500 font-medium">Fecha: {tempDate}</p>
               {validityDays && <p className="text-xs text-slate-400">Validez: {validityDays} días</p>}
               {existingFolio && <p className="text-xs font-bold text-amber-600 mt-1">Rev: {nextVersion}</p>}
@@ -155,6 +184,9 @@ export default function QuotePreview({
             <div>
               <p className="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-widest">Cliente:</p>
               <p className="font-bold text-xl text-slate-900 leading-tight">{client.razon_social}</p>
+              {attentionTo && (
+                <p className="text-sm font-bold text-cyan-700 mt-1 uppercase">ATN: {attentionTo}</p>
+              )}
               <div className="mt-2 text-sm text-slate-600">
                 <p>RUT: {client.rut}</p>
                 <p>{client.direccion}</p>
@@ -181,17 +213,23 @@ export default function QuotePreview({
             <tbody className="divide-y divide-slate-100">
               {items.map((item, idx) => (
                 <tr key={idx}>
-                  <td className="py-4 text-sm font-mono text-cyan-700 font-bold">{item.part_number}</td>
-                  <td className="py-4 text-sm font-semibold text-slate-700">
+                  <td className="py-4 text-sm font-mono text-cyan-700 font-bold align-top">{item.part_number}</td>
+                  <td className="py-4 text-sm font-semibold text-slate-700 align-top">
                     {item.name}
                     {item.datasheet_url && (
                       <div className="flex items-center gap-1 mt-1 text-[10px] text-cyan-600 font-normal">
                         <FileCheck className="w-3 h-3" /> Ficha Técnica Incluida
                       </div>
                     )}
+                    {/* Renderizado del Comentario Específico */}
+                    {item.comment && (
+                      <div className="mt-1 text-xs text-slate-500 font-normal italic whitespace-pre-line">
+                        Nota: {item.comment}
+                      </div>
+                    )}
                   </td>
-                  <td className="py-4 text-sm text-center font-medium">{item.quantity}</td>
-                  <td className="py-4 text-sm font-bold text-right text-slate-900">${item.total.toLocaleString('es-CL')}</td>
+                  <td className="py-4 text-sm text-center font-medium align-top">{item.quantity}</td>
+                  <td className="py-4 text-sm font-bold text-right text-slate-900 align-top">${item.total.toLocaleString('es-CL', { maximumFractionDigits: 0 })}</td>
                 </tr>
               ))}
             </tbody>
@@ -201,15 +239,15 @@ export default function QuotePreview({
             <div className="w-72 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500 font-medium">Subtotal:</span>
-                <span className="font-bold text-slate-700">${totals.subtotal.toLocaleString('es-CL')}</span>
+                <span className="font-bold text-slate-700">${totals.subtotal.toLocaleString('es-CL', { maximumFractionDigits: 0 })}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500 font-medium">IVA (19%):</span>
-                <span className="font-bold text-slate-700">${totals.iva.toLocaleString('es-CL')}</span>
+                <span className="font-bold text-slate-700">${totals.iva.toLocaleString('es-CL', { maximumFractionDigits: 0 })}</span>
               </div>
               <div className="flex justify-between text-2xl font-black text-cyan-700 pt-4 border-t border-cyan-100">
                 <span>TOTAL:</span>
-                <span>${totals.total.toLocaleString('es-CL')}</span>
+                <span>${totals.total.toLocaleString('es-CL', { maximumFractionDigits: 0 })}</span>
               </div>
             </div>
           </div>
@@ -228,6 +266,17 @@ export default function QuotePreview({
               </div>
             )}
           </div>
+
+          {/* Sección de Firma del Emisor */}
+          {profile && (
+            <div className="mt-12 pt-8 border-t border-slate-200">
+              <div className="text-xs text-slate-500">
+                <p className="font-bold text-slate-700 uppercase tracking-widest mb-1">Emitido por:</p>
+                <p className="font-semibold text-slate-800 text-sm">{profile.nombre_completo}</p>
+                <p>{profile.email} {profile.telefono ? `| Tel: ${profile.telefono}` : ''}</p>
+              </div>
+            </div>
+          )}
 
         </div>
       </div>
