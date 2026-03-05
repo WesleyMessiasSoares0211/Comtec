@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { 
   FileText, Calendar, User, Search, 
   AlertCircle, Loader2, Download, CopyPlus,
-  ChevronLeft, ChevronRight, ChevronDown, Activity
+  ChevronLeft, ChevronRight, ChevronDown, Activity, ShieldAlert, CheckCircle2, Lock
 } from 'lucide-react';
 import { Client } from '../../types/client';
 import { toast } from 'sonner';
@@ -11,6 +11,7 @@ import { generateQuotePDF } from '../../utils/pdfGenerator';
 import QRCode from 'qrcode';
 import { quoteService } from '../../services/quoteService';
 import QuoteTelemetryModal from './QuoteTelemetryModal';
+import { useAuth } from '../hooks/useAuth';
 
 interface QuoteWithClient {
   id: string;
@@ -26,8 +27,9 @@ interface QuoteWithClient {
   terms?: string;
   validity_days?: number;
   version?: number;
-  has_new_activity?: boolean; // NUEVO: Estado de alerta
+  has_new_activity?: boolean;
   client: Client;
+  vendedor_id?: string;
 }
 
 interface Props {
@@ -39,6 +41,9 @@ interface Props {
 const ITEMS_PER_PAGE = 10;
 
 export default function QuotesList({ selectedClient, onClearFilter, onCreateRevision }: Props) {
+  const { session } = useAuth();
+  const [userRole, setUserRole] = useState<'vendedor' | 'super_admin' | 'admin'>('vendedor');
+  
   const [quotes, setQuotes] = useState<QuoteWithClient[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -49,6 +54,17 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   
   const [trackingQuote, setTrackingQuote] = useState<QuoteWithClient | null>(null);
+
+  // 1. Obtener el rol del usuario actual al cargar
+  useEffect(() => {
+    const fetchRole = async () => {
+      if (session?.user?.id) {
+        const { data } = await supabase.from('profiles').select('role').eq('id', session.user.id).single();
+        if (data && data.role) setUserRole(data.role);
+      }
+    };
+    fetchRole();
+  }, [session]);
 
   useEffect(() => {
     setPage(1);
@@ -101,15 +117,10 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
     }
   };
 
-  // NUEVO: Abre el rastreo y apaga la alerta visual de forma optimista
   const handleOpenTracking = async (quote: QuoteWithClient) => {
     setTrackingQuote(quote);
-    
     if (quote.has_new_activity) {
-      // 1. Apagado instantáneo en la UI (Optimista)
       setQuotes(prev => prev.map(q => q.id === quote.id ? { ...q, has_new_activity: false } : q));
-      
-      // 2. Apagado silencioso en Base de Datos
       try {
         await supabase.from('crm_quotes').update({ has_new_activity: false }).eq('id', quote.id);
       } catch (err) {
@@ -126,7 +137,7 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
        const qrDataUrl = await QRCode.toDataURL(docsUrl, { width: 200, margin: 2 });
        
        const success = generateQuotePDF(quote, quote.client, qrDataUrl);
-       if(success) toast.success("Descargado correctamente");
+       if(success) toast.success("PDF generado y descargado correctamente");
      } catch (e) {
        console.error(e);
        generateQuotePDF(quote, quote.client);
@@ -153,11 +164,16 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
     }
   };
 
+  const isAdmin = userRole === 'super_admin' || userRole === 'admin';
+
   const getStatusColor = (status: string) => {
     switch (status) {
+      case 'Pendiente de Aprobacion': return 'bg-orange-500/20 text-orange-400 border-orange-500/50 shadow-[0_0_10px_rgba(249,115,22,0.2)]';
+      case 'Aprobada': return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.2)]';
       case 'Aceptada': return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
       case 'Facturada': return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
       case 'Rechazada': return 'bg-red-500/10 text-red-400 border-red-500/20';
+      case 'Borrador': return 'bg-slate-800 text-slate-400 border-slate-700';
       default: return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
     }
   };
@@ -192,17 +208,21 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
         ) : quotes.length === 0 ? (
            <div className="text-center py-10 text-slate-500">No se encontraron cotizaciones.</div>
         ) : (
-          quotes.map((quote) => (
-              <div key={quote.id} className="bg-slate-900/30 border border-slate-800 hover:border-cyan-500/30 p-4 rounded-xl transition-all group">
+          quotes.map((quote) => {
+            const isPendingApproval = quote.estado === 'Pendiente de Aprobacion';
+            
+            return (
+              <div key={quote.id} className={`bg-slate-900/30 border p-4 rounded-xl transition-all group ${isPendingApproval ? 'border-orange-500/30 bg-orange-950/10' : 'border-slate-800 hover:border-cyan-500/30'}`}>
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
                      {/* Icono Estado */}
                      <div className={`p-3 rounded-lg ${
-                        quote.estado === 'Aceptada' ? 'bg-emerald-500/10 text-emerald-400' : 
+                        quote.estado === 'Pendiente de Aprobacion' ? 'bg-orange-500/20 text-orange-400' : 
+                        quote.estado === 'Aprobada' || quote.estado === 'Aceptada' ? 'bg-emerald-500/10 text-emerald-400' : 
                         quote.estado === 'Pendiente' ? 'bg-amber-500/10 text-amber-400' : 
                         'bg-slate-800 text-slate-400'
                       }`}>
-                        <FileText className="w-5 h-5" />
+                        {isPendingApproval ? <ShieldAlert className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
                      </div>
                      
                      {/* Datos Principales */}
@@ -220,18 +240,21 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
                            <div className="relative group/status inline-block">
                              <select
                                value={quote.estado}
-                               disabled={updatingId === quote.id}
+                               disabled={updatingId === quote.id || (isPendingApproval && !isAdmin)}
                                onChange={(e) => handleStatusChange(quote.id, e.target.value)}
-                               className={`appearance-none cursor-pointer text-[10px] pl-2 pr-6 py-0.5 rounded-full border uppercase font-bold outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-slate-900 ${getStatusColor(quote.estado)} ${updatingId === quote.id ? 'opacity-50' : ''}`}
+                               className={`appearance-none cursor-pointer text-[10px] pl-2 pr-6 py-0.5 rounded-full border uppercase font-bold outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-slate-900 ${getStatusColor(quote.estado)} ${updatingId === quote.id || (isPendingApproval && !isAdmin) ? 'opacity-50 cursor-not-allowed' : ''}`}
                                style={{ textAlignLast: 'center' }}
                              >
-                               <option value="Pendiente" className="bg-slate-900 text-amber-400">Pendiente</option>
+                               <option value="Borrador" className="bg-slate-900 text-slate-400">Borrador</option>
+                               <option value="Pendiente de Aprobacion" className="bg-slate-900 text-orange-400">En Revisión</option>
+                               <option value="Aprobada" className="bg-slate-900 text-emerald-400">Aprobada</option>
+                               <option value="Pendiente" className="bg-slate-900 text-amber-400">Pendiente Envío</option>
                                <option value="Aceptada" className="bg-slate-900 text-emerald-400">Aceptada</option>
                                <option value="Facturada" className="bg-slate-900 text-blue-400">Facturada</option>
                                <option value="Rechazada" className="bg-slate-900 text-red-400">Rechazada</option>
                              </select>
                              
-                             {updatingId !== quote.id && (
+                             {updatingId !== quote.id && !(isPendingApproval && !isAdmin) && (
                                <div className="absolute inset-y-0 right-1.5 flex items-center pointer-events-none">
                                  <ChevronDown className="w-3 h-3 opacity-60" />
                                </div>
@@ -256,8 +279,20 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
                      <div className="text-right hidden sm:block mr-2">
                         <p className="text-cyan-400 font-mono font-bold">${(quote.total || quote.total_bruto).toLocaleString('es-CL')}</p>
                      </div>
+
+                     {/* BOTÓN DE AUTORIZACIÓN RÁPIDA (SOLO ADMINS) */}
+                     {isPendingApproval && isAdmin && (
+                        <button 
+                          onClick={() => handleStatusChange(quote.id, 'Aprobada')}
+                          disabled={updatingId === quote.id}
+                          className="bg-orange-600 hover:bg-orange-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-orange-900/20 transition-all animate-pulse"
+                          title="Autorizar Emisión"
+                        >
+                          <CheckCircle2 className="w-4 h-4" /> Aprobar
+                        </button>
+                     )}
                      
-                     {/* NUEVO: Botón de Rastreo con Alerta Dinámica */}
+                     {/* Botón de Rastreo con Alerta Dinámica */}
                      <button 
                        onClick={() => handleOpenTracking(quote)}
                        className={`p-2 rounded-lg transition-all border shadow-md relative ${
@@ -268,7 +303,6 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
                        title="Rastreo de Actividad"
                      >
                        <Activity className={`w-4 h-4 ${quote.has_new_activity ? 'animate-pulse' : ''}`} />
-                       {/* Círculo indicador extra para mayor visibilidad */}
                        {quote.has_new_activity && (
                          <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
@@ -287,18 +321,24 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
                        </button>
                      )}
 
+                     {/* BOTÓN DE DESCARGA (BLOQUEADO SI ESTÁ PENDIENTE DE APROBACIÓN) */}
                      <button 
                         onClick={() => handleDownload(quote)}
-                        disabled={downloadingId === quote.id}
-                        className="p-2 bg-slate-800 hover:bg-cyan-600/20 hover:text-cyan-400 text-slate-400 border border-slate-700 hover:border-cyan-500/50 rounded-lg transition-all"
-                        title="Descargar PDF"
+                        disabled={downloadingId === quote.id || isPendingApproval}
+                        className={`p-2 rounded-lg transition-all border ${
+                          isPendingApproval 
+                            ? 'bg-slate-900 text-slate-600 border-slate-800 cursor-not-allowed' 
+                            : 'bg-slate-800 hover:bg-cyan-600/20 hover:text-cyan-400 text-slate-400 border-slate-700 hover:border-cyan-500/50'
+                        }`}
+                        title={isPendingApproval ? "Bloqueado: Requiere Aprobación" : "Descargar PDF"}
                      >
-                        {downloadingId === quote.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                        {downloadingId === quote.id ? <Loader2 className="w-4 h-4 animate-spin" /> : (isPendingApproval ? <Lock className="w-4 h-4" /> : <Download className="w-4 h-4" />)}
                      </button>
                   </div>
                 </div>
               </div>
-          ))
+            );
+          })
         )}
        </div>
 
@@ -327,7 +367,7 @@ export default function QuotesList({ selectedClient, onClearFilter, onCreateRevi
          </div>
        )}
 
-       {/* MODAL DE RASTREO (TELEMETRÍA) */}
+       {/* MODAL DE RASTREO */}
        {trackingQuote && (
          <QuoteTelemetryModal
            quoteId={trackingQuote.id}
