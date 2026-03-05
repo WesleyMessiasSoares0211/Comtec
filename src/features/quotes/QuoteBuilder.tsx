@@ -109,7 +109,7 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
     setSearchTerm('');
   };
 
-  // --- LÓGICA CORE: COTIZACIÓN INTELIGENTE (PASTE & MATCH) ---
+  // --- LÓGICA CORE: COTIZACIÓN INTELIGENTE (PASTE & MATCH V2.0) ---
   const processSmartImport = () => {
     if (!importText.trim() || !products) return;
 
@@ -120,49 +120,58 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
     lines.forEach(line => {
       if (!line.trim()) return;
       
-      // Intentamos separar por Tabulación (estándar al copiar de Excel) o Punto y Coma
       const parts = line.split(/\t|;/);
-      let pn = '';
+      let searchCode = '';
       let qty = 1;
 
       if (parts.length >= 2) {
-        pn = parts[0].trim();
+        searchCode = parts[0].trim();
         qty = parseInt(parts[1].trim(), 10) || 1;
       } else {
-        // Plan B: Separado por espacios "SENS-100 15"
         const spaceParts = line.trim().split(/\s+/);
         if (spaceParts.length >= 2) {
           qty = parseInt(spaceParts.pop() || '1', 10) || 1;
-          pn = spaceParts.join(' ').trim();
+          searchCode = spaceParts.join(' ').trim();
         } else {
-          pn = line.trim();
+          searchCode = line.trim();
         }
       }
 
-      if (!pn) return;
+      if (!searchCode) return;
+      const targetCode = searchCode.toLowerCase();
 
-      // EL CRUCE (MATCHING)
-      const foundProduct = products.find(p => 
-        p.part_number?.toLowerCase() === pn.toLowerCase()
-      );
+      // 🧠 EL CRUCE MULTINIVEL (Diccionario de Equivalencias)
+      const foundProduct = products.find(p => {
+        // Nivel 1: Búsqueda exacta por N/P oficial de Comtec
+        if (p.part_number?.toLowerCase() === targetCode) return true;
+        
+        // Nivel 2: Búsqueda profunda en Diccionario Minero / Clientes (metadata)
+        if (p.metadata?.client_part_numbers) {
+          // Extraemos todos los códigos de clientes guardados en el JSON
+          const clientCodes = Object.values(p.metadata.client_part_numbers) as string[];
+          if (clientCodes.some(code => code.toLowerCase() === targetCode)) {
+            return true;
+          }
+        }
+        
+        return false;
+      });
 
       if (foundProduct) {
+        // Opcional a futuro: Si lo encontró por diccionario, podríamos añadir una nota automática.
         handleAddItem(foundProduct, qty);
         addedCount++;
       } else {
-        missing.push(pn);
+        missing.push(searchCode);
       }
     });
 
     setImportResults({ found: addedCount, missing });
     
-    if (addedCount > 0) toast.success(`Procesamiento exitoso: ${addedCount} ítems integrados.`);
-    if (missing.length > 0) toast.warning(`No se encontraron ${missing.length} códigos en el catálogo.`);
+    if (addedCount > 0) toast.success(`Procesamiento exitoso: ${addedCount} ítems cruzados e integrados.`);
+    if (missing.length > 0) toast.warning(`No se encontraron ${missing.length} códigos en el catálogo ni en el diccionario.`);
     
-    // Dejamos el modal abierto un momento para que el usuario vea los "No encontrados"
-    if (missing.length === 0) {
-      closeSmartImport();
-    }
+    if (missing.length === 0) closeSmartImport();
   };
 
   const closeSmartImport = () => {
