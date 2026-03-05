@@ -113,6 +113,8 @@ export default function QuotePreview({
         terms,
         validity_days: validityDays,
         version: savedQuote.version
+        attention_to: attentionTo,      // NUEVO
+        seller_profile: profile
       }, client, qrDataUrl);
 
       if (pdfSuccess) {
