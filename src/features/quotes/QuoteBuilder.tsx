@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Search, Plus, Trash2, FileText, Save, 
-  Calculator, Calendar, FileCheck, AlertCircle, Link as LinkIcon 
+  Calculator, Calendar, FileCheck, AlertCircle, Link as LinkIcon,
+  Wand2, X, UploadCloud, ListChecks
 } from 'lucide-react';
 import { useClients } from '../../hooks/useClients';
 import { useProducts } from '../../hooks/useProducts';
@@ -26,6 +27,11 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
   const [showPreview, setShowPreview] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
+  // --- ESTADOS: COTIZACIÓN INTELIGENTE ---
+  const [showSmartImport, setShowSmartImport] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importResults, setImportResults] = useState<{found: number, missing: string[]}>({ found: 0, missing: [] });
+
   const [isRevisionMode, setIsRevisionMode] = useState(false);
   const [parentFolio, setParentFolio] = useState('');
   const [nextVersion, setNextVersion] = useState(1);
@@ -76,27 +82,93 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
     return { subtotal, iva, total: subtotal + iva };
   }, [items]);
 
-  const handleAddItem = (product: any) => {
-    const existing = items.find(i => i.product_id === product.id);
-    if (existing) {
-      toast.info("Producto ya agregado. Modifica la cantidad.");
-      return;
-    }
-    
-    // CORRECCIÓN 1: Captura estricta de la URL de ficha técnica sin importar el alias de la BD
+  const handleAddItem = (product: any, qty: number = 1) => {
     const urlFicha = product.datasheet_url || product.technical_spec_url || null;
-
-    setItems([...items, {
-      product_id: product.id,
-      part_number: product.part_number,
-      name: product.name,
-      description: product.description,
-      unit_price: product.price,
-      quantity: 1,
-      total: product.price,
-      datasheet_url: urlFicha
-    }]);
+    
+    setItems(prev => {
+      const existing = prev.find(i => i.product_id === product.id);
+      if (existing) {
+        // Si ya existe, sumamos la cantidad (útil para la importación masiva)
+        return prev.map(item => 
+          item.product_id === product.id 
+            ? { ...item, quantity: item.quantity + qty, total: (item.quantity + qty) * item.unit_price }
+            : item
+        );
+      }
+      return [...prev, {
+        product_id: product.id,
+        part_number: product.part_number,
+        name: product.name,
+        description: product.description,
+        unit_price: product.price,
+        quantity: qty,
+        total: product.price * qty,
+        datasheet_url: urlFicha
+      }];
+    });
     setSearchTerm('');
+  };
+
+  // --- LÓGICA CORE: COTIZACIÓN INTELIGENTE (PASTE & MATCH) ---
+  const processSmartImport = () => {
+    if (!importText.trim() || !products) return;
+
+    const lines = importText.split('\n');
+    let addedCount = 0;
+    const missing: string[] = [];
+
+    lines.forEach(line => {
+      if (!line.trim()) return;
+      
+      // Intentamos separar por Tabulación (estándar al copiar de Excel) o Punto y Coma
+      const parts = line.split(/\t|;/);
+      let pn = '';
+      let qty = 1;
+
+      if (parts.length >= 2) {
+        pn = parts[0].trim();
+        qty = parseInt(parts[1].trim(), 10) || 1;
+      } else {
+        // Plan B: Separado por espacios "SENS-100 15"
+        const spaceParts = line.trim().split(/\s+/);
+        if (spaceParts.length >= 2) {
+          qty = parseInt(spaceParts.pop() || '1', 10) || 1;
+          pn = spaceParts.join(' ').trim();
+        } else {
+          pn = line.trim();
+        }
+      }
+
+      if (!pn) return;
+
+      // EL CRUCE (MATCHING)
+      const foundProduct = products.find(p => 
+        p.part_number?.toLowerCase() === pn.toLowerCase()
+      );
+
+      if (foundProduct) {
+        handleAddItem(foundProduct, qty);
+        addedCount++;
+      } else {
+        missing.push(pn);
+      }
+    });
+
+    setImportResults({ found: addedCount, missing });
+    
+    if (addedCount > 0) toast.success(`Procesamiento exitoso: ${addedCount} ítems integrados.`);
+    if (missing.length > 0) toast.warning(`No se encontraron ${missing.length} códigos en el catálogo.`);
+    
+    // Dejamos el modal abierto un momento para que el usuario vea los "No encontrados"
+    if (missing.length === 0) {
+      closeSmartImport();
+    }
+  };
+
+  const closeSmartImport = () => {
+    setShowSmartImport(false);
+    setImportText('');
+    setImportResults({ found: 0, missing: [] });
   };
 
   const updateQuantity = (index: number, newQty: number) => {
@@ -122,8 +194,66 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
   }, [products, searchTerm]);
 
   return (
-    <div className="flex flex-col h-full space-y-6 animate-in fade-in">
+    <div className="flex flex-col h-full space-y-6 animate-in fade-in relative">
       
+      {/* MODAL SOBREPUESTO: COTIZACIÓN INTELIGENTE */}
+      {showSmartImport && (
+        <div className="absolute inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-start justify-center pt-10">
+          <div className="bg-slate-900 border border-cyan-500/30 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-cyan-500/10 rounded-lg text-cyan-400">
+                  <Wand2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-white font-bold">Importación Inteligente</h3>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-widest">Pega desde Excel: [N° Parte] [Tabulador] [Cantidad]</p>
+                </div>
+              </div>
+              <button onClick={closeSmartImport} className="text-slate-500 hover:text-white p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <textarea 
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-sm text-slate-300 font-mono focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none h-48 resize-none"
+                placeholder={`SENS-100\t15\nGATE-X\t2\nCABLE-M12\t50`}
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+              />
+              
+              {importResults.missing.length > 0 && (
+                <div className="bg-orange-500/10 border border-orange-500/20 p-4 rounded-xl">
+                  <h4 className="text-xs font-bold text-orange-400 uppercase tracking-wider flex items-center gap-2 mb-2">
+                    <AlertCircle className="w-4 h-4" /> Códigos no reconocidos ({importResults.missing.length})
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {importResults.missing.map((code, idx) => (
+                      <span key={idx} className="bg-slate-950 border border-orange-500/30 text-orange-300 text-[10px] px-2 py-1 rounded font-mono">
+                        {code}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button onClick={closeSmartImport} className="px-4 py-2 text-sm font-bold text-slate-400 hover:text-white">Cancelar</button>
+                <button 
+                  onClick={processSmartImport} 
+                  disabled={!importText.trim()}
+                  className="bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-cyan-500/20 disabled:opacity-50 transition-all"
+                >
+                  <ListChecks className="w-4 h-4" />
+                  PROCESAR MATRIZ
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isRevisionMode && (
         <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 p-4 rounded-xl flex items-center justify-between animate-pulse">
           <div className="flex items-center gap-2">
@@ -170,7 +300,7 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
       </div>
 
       <div className="flex-1 bg-slate-900/30 border border-slate-800 rounded-2xl p-6 min-h-[400px] flex flex-col">
-        <div className="relative mb-6 z-20">
+        <div className="relative mb-6 z-20 flex gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
             <input 
@@ -181,6 +311,16 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
+          
+          {/* BOTÓN MÁGICO */}
+          <button 
+            onClick={() => setShowSmartImport(true)}
+            className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-400 px-4 py-3 rounded-xl flex items-center gap-2 font-bold text-sm shadow-lg transition-all"
+            title="Importar desde Excel"
+          >
+            <UploadCloud className="w-5 h-5" />
+            <span className="hidden sm:inline">Pegar Excel</span>
+          </button>
 
           {searchTerm && (
             <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-50">
@@ -217,6 +357,12 @@ export default function QuoteBuilder({ initialData, onSuccess }: Props) {
             <div className="h-full flex flex-col items-center justify-center text-slate-600 border-2 border-dashed border-slate-800 rounded-xl">
               <Calculator className="w-12 h-12 mb-3 opacity-50" />
               <p className="font-medium">Cotización vacía</p>
+              <button 
+                onClick={() => setShowSmartImport(true)}
+                className="mt-4 text-xs font-bold text-cyan-500 hover:text-cyan-400 flex items-center gap-1"
+              >
+                <Wand2 className="w-4 h-4" /> Probar importación inteligente
+              </button>
             </div>
           ) : (
             <table className="w-full">
