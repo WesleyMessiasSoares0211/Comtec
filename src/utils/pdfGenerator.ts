@@ -23,7 +23,7 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
     const baseUrl = window.location.origin;
     const verificationUrl = `${baseUrl}/verify/${encodeURIComponent(quote.folio)}`;
     
-    // Paleta de colores
+    // --- PALETA DE COLORES CORPORATIVA ---
     const colorCyan: [number, number, number] = [8, 145, 178]; 
     const colorSlateDark: [number, number, number] = [15, 23, 42]; 
     const colorSlateText: [number, number, number] = [51, 65, 85]; 
@@ -123,13 +123,20 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
     // --- TABLA DE PRODUCTOS ---
     const items = Array.isArray(quote.items) ? quote.items : [];
 
-    const tableData = items.map(i => [
-      i.part_number || 'S/N', 
-      '', // Dejamos la columna descripción "vacía" para dibujarla nosotros
-      i.quantity || 0, 
-      `$${(i.unit_price || 0).toLocaleString('es-CL')}`, 
-      `$${(i.total || 0).toLocaleString('es-CL')}`
-    ]);
+    // Preparamos los datos con saltos de línea (\n) para que AutoTable reserve el espacio correcto automáticamente
+    const tableData = items.map(i => {
+      let desc = i.name || 'Sin Descripción';
+      if (i.comment) desc += `\n\nNota: ${i.comment}`; // Espacio para el comentario
+      if (i.datasheet_url) desc += `\n\nVer Ficha Técnica`; // Espacio para el link
+      
+      return [
+        i.part_number || 'S/N', 
+        desc, 
+        i.quantity || 0, 
+        `$${(i.unit_price || 0).toLocaleString('es-CL', { maximumFractionDigits: 0 })}`, 
+        `$${(i.total || 0).toLocaleString('es-CL', { maximumFractionDigits: 0 })}`
+      ];
+    });
 
     autoTable(doc, {
       startY: 85,
@@ -146,20 +153,14 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
         3: { cellWidth: 28, halign: 'right' },
         4: { cellWidth: 28, halign: 'right', fontStyle: 'bold', textColor: colorSlateDark }
       },
-      didParseCell: (data) => {
-        // Reservamos la altura de la fila creando líneas en blanco ocultas
+      willDrawCell: (data) => {
+        // Justo antes de imprimir la celda de descripción, "borramos" el texto falso.
+        // La tabla ya calculó la altura correcta, ahora nosotros pintamos el diseño.
         if (data.section === 'body' && data.column.index === 1) {
-           const item = items[data.row.index];
-           let linesRequired = doc.splitTextToSize(item.name || 'Sin Descripción', data.cell.width - 8).length;
-           
-           if (item.comment) linesRequired += doc.splitTextToSize(`Nota: ${item.comment}`, data.cell.width - 8).length + 0.5;
-           if (item.datasheet_url) linesRequired += 1.5;
-           
-           data.cell.text = Array(Math.ceil(linesRequired)).fill(''); // Expande la fila automáticamente
+          data.cell.text = []; 
         }
       },
       didDrawCell: (data) => {
-        // Dibujamos nuestro propio contenido ordenado en la columna Descripción
         if (data.section === 'body' && data.column.index === 1) {
           const item = items[data.row.index];
           let currentY = data.cell.y + 5; 
@@ -171,9 +172,9 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
           doc.setTextColor(colorSlateText[0], colorSlateText[1], colorSlateText[2]);
           const nameLines = doc.splitTextToSize(item.name || 'Sin Descripción', data.cell.width - 6);
           doc.text(nameLines, startX, currentY);
-          currentY += (nameLines.length * 4); // Espaciado
+          currentY += (nameLines.length * 4); // Sumamos altura del texto
 
-          // 2. Comentario (Si existe)
+          // 2. Comentario Específico
           if (item.comment) {
              doc.setFontSize(8);
              doc.setFont('helvetica', 'italic');
@@ -183,9 +184,9 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
              currentY += (commentLines.length * 3.5) + 1.5; 
           }
 
-          // 3. Link Ficha Técnica (Si existe)
+          // 3. Link a la Ficha Técnica
           if (item.datasheet_url) {
-            currentY += 1; // Un pequeño respiro antes del botón
+            currentY += 1; // Respiro visual
             doc.setFontSize(8);
             doc.setFont('helvetica', 'bold');
             doc.setTextColor(colorCyan[0], colorCyan[1], colorCyan[2]);
