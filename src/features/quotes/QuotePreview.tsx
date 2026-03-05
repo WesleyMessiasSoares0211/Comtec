@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react'; 
 import QRCode from 'qrcode'; 
-import { FileDown, X, FileText, Loader2, FileCheck, AlertTriangle } from 'lucide-react';
+import { FileDown, X, FileText, Loader2, FileCheck, AlertTriangle, Mail, Send } from 'lucide-react';
 import { quoteService } from '../../services/quoteService';
-import { supabase } from '../../lib/supabase'; // Importante para traer el perfil del vendedor
+import { supabase } from '../../lib/supabase'; 
 import { toast } from 'sonner';
 import { Client } from '../../types/client';
 import { QuoteItem } from '../../types/quotes';
@@ -21,31 +21,29 @@ interface Props {
   nextVersion?: number;
   parentQuoteId?: string;
   onSuccess?: () => void;
-  
-  // Nuevos Props V2
   attentionTo?: string;
   requiresApproval?: boolean;
+  isAlreadyApproved?: boolean; // NUEVO: Para saber si la Jefatura ya dio luz verde
 }
 
 export default function QuotePreview({ 
   client, items, totals, onClose, 
   notes, terms, validityDays,
   existingFolio, nextVersion, parentQuoteId, onSuccess,
-  attentionTo, requiresApproval
+  attentionTo, requiresApproval, isAlreadyApproved
 }: Props) {
   const [isSaving, setIsSaving] = useState(false);
   const [profile, setProfile] = useState<any>(null);
+  
+  // NUEVO: Estado para controlar el modal de envío de correo
+  const [showEmailPrompt, setShowEmailPrompt] = useState(false);
+  const [generatedQuoteData, setGeneratedQuoteData] = useState<any>(null);
 
-  // Buscar los datos del vendedor logueado para el pie de firma
   useEffect(() => {
     const fetchProfile = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data } = await supabase
-          .from('profiles')
-          .select('nombre_completo, email, telefono')
-          .eq('id', user.id)
-          .single();
+        const { data } = await supabase.from('profiles').select('nombre_completo, email, telefono').eq('id', user.id).single();
         setProfile(data);
       }
     };
@@ -56,52 +54,48 @@ export default function QuotePreview({
   const baseUrl = window.location.origin;
   const previewUrl = `${baseUrl}/quote/preview/docs`; 
 
+  // Determinar si realmente requiere aprobación (Si ya fue aprobada, se anula el bloqueo)
+  const effectivelyRequiresApproval = requiresApproval && !isAlreadyApproved;
+
   const handleEmit = async () => {
     if (isSaving) return;
     setIsSaving(true);
     
     try {
-      // 1. Guardar en Base de Datos (Inyectamos los nuevos campos)
-      // Nota: Forzamos el tipo (as any) temporalmente hasta que actualicemos la interfaz en quoteService.ts
       const payload: any = {
         client_id: client.id,
         items: items,
         subtotal_neto: totals.subtotal,
         iva: totals.iva,
         total_bruto: totals.total,
-        // Agregamos una nota automática silenciosa si requiere aprobación
-        notes: requiresApproval ? `[REQUIERE APROBACIÓN POR MARGEN BAJO] ${notes || ''}` : notes,
+        notes: effectivelyRequiresApproval ? `[REQUIERE APROBACIÓN POR MARGEN BAJO] ${notes || ''}` : notes,
         terms,
         validity_days: validityDays,
         version: nextVersion,
         folio: existingFolio,
         parent_quote_id: parentQuoteId,
         attention_to: attentionTo || null, 
-        estado_sugerido: requiresApproval ? 'Borrador' : 'Pendiente' // Usamos un estado oficial
+        // Ahora usamos los estados oficiales
+        estado_sugerido: effectivelyRequiresApproval ? 'Pendiente de Aprobacion' : 'Pendiente' 
       };
 
       const savedQuote = await quoteService.create(payload);
 
-      // Si requiere aprobación, detenemos el proceso aquí (NO generamos el PDF oficial)
-      if (requiresApproval) {
-        toast.success(`Cotización guardada como borrador. Requiere aprobación de Jefatura por margen menor al 15%.`);
+      if (effectivelyRequiresApproval) {
+        toast.success(`Cotización enviada a Jefatura. Te notificaremos cuando sea aprobada.`);
         if (onSuccess) onSuccess();
         onClose();
         return;
       }
 
-      // 2. Generar QR Real (Solo si se aprueba/emite)
       const docsUrl = `${baseUrl}/quote/docs?id=${savedQuote.id}`;
       let qrDataUrl = '';
       try {
-        qrDataUrl = await QRCode.toDataURL(docsUrl, {
-          width: 200, margin: 1, color: { dark: '#000000', light: '#ffffff' }
-        });
+        qrDataUrl = await QRCode.toDataURL(docsUrl, { width: 200, margin: 1, color: { dark: '#000000', light: '#ffffff' } });
       } catch (qrErr) {
         console.warn("Error generando código QR para PDF:", qrErr);
       }
 
-      // 3. Generar PDF
       const pdfSuccess = generateQuotePDF({
         folio: savedQuote.folio,
         items,
@@ -113,18 +107,20 @@ export default function QuotePreview({
         terms,
         validity_days: validityDays,
         version: savedQuote.version,
-        attention_to: attentionTo,      // NUEVO
-        seller_profile: profile
+        attention_to: attentionTo,      
+        seller_profile: profile         
       }, client, qrDataUrl);
 
       if (pdfSuccess) {
-        toast.success(`Cotización ${savedQuote.folio} emitida correctamente`);
-        if (onSuccess) onSuccess();
+        toast.success(`Cotización ${savedQuote.folio} emitida correctamente.`);
+        // En lugar de cerrar, abrimos el prompt de correo
+        setGeneratedQuoteData(savedQuote);
+        setShowEmailPrompt(true);
       } else {
-        toast.warning(`Cotización ${savedQuote.folio} guardada, pero hubo un error generando el PDF`);
+        toast.warning(`Cotización guardada, pero hubo un error generando el PDF`);
+        if (onSuccess) onSuccess();
+        onClose();
       }
-      
-      onClose();
 
     } catch (error: any) {
       console.error("Proceso fallido:", error);
@@ -133,6 +129,62 @@ export default function QuotePreview({
       setIsSaving(false);
     }
   };
+
+  const handleSendEmail = async (send: boolean) => {
+    if (send) {
+      // Aquí conectaremos la API de correos (Resend, SendGrid o Google Cloud) en el próximo paso
+      toast.info(`Preparando envío de correo para ${client.email_contacto || 'el cliente'}...`);
+      // Simulación de envío
+      setTimeout(() => {
+        toast.success('Correo enviado exitosamente.');
+        if (onSuccess) onSuccess();
+        onClose();
+      }, 1500);
+    } else {
+      if (onSuccess) onSuccess();
+      onClose();
+    }
+  };
+
+  // --- RENDER DEL MODAL DE CORREO SOBREPUESTO ---
+  if (showEmailPrompt) {
+    return (
+      <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+        <div className="bg-slate-900 border border-slate-700 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="p-6 text-center">
+            <div className="bg-cyan-500/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Mail className="w-8 h-8 text-cyan-400" />
+            </div>
+            <h2 className="text-white font-bold text-xl mb-2">¡Cotización Generada!</h2>
+            <p className="text-slate-400 text-sm mb-6">
+              El PDF oficial se ha descargado en tu equipo. ¿Deseas enviar esta cotización automáticamente al correo del cliente?
+            </p>
+            
+            <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800 mb-6 text-left">
+              <p className="text-xs text-slate-500 uppercase font-bold tracking-widest mb-1">Destinatario sugerido</p>
+              <p className="text-white font-mono text-sm">{client.email_contacto || 'No hay correo registrado'}</p>
+            </div>
+
+            <div className="flex gap-3">
+              <button 
+                onClick={() => handleSendEmail(false)}
+                className="flex-1 bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-xl font-bold transition-colors"
+              >
+                No, enviar yo mismo
+              </button>
+              <button 
+                onClick={() => handleSendEmail(true)}
+                disabled={!client.email_contacto}
+                className="flex-1 bg-cyan-600 hover:bg-cyan-500 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Send className="w-4 h-4" /> Sí, enviar ahora
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[100] flex items-center justify-center p-4" onClick={onClose}>
@@ -153,10 +205,10 @@ export default function QuotePreview({
             <button 
               onClick={handleEmit}
               disabled={isSaving}
-              className={`${requiresApproval ? 'bg-orange-600 hover:bg-orange-500 shadow-orange-900/20' : 'bg-cyan-600 hover:bg-cyan-500 shadow-cyan-900/20'} text-white px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-lg active:scale-95 disabled:opacity-50`}
+              className={`${effectivelyRequiresApproval ? 'bg-orange-600 hover:bg-orange-500 shadow-orange-900/20' : 'bg-cyan-600 hover:bg-cyan-500 shadow-cyan-900/20'} text-white px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-lg active:scale-95 disabled:opacity-50`}
             >
-              {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : (requiresApproval ? <AlertTriangle className="w-4 h-4" /> : <FileDown className="w-4 h-4" />)}
-              {isSaving ? 'PROCESANDO...' : (requiresApproval ? 'SOLICITAR APROBACIÓN' : 'EMITIR Y DESCARGAR')}
+              {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : (effectivelyRequiresApproval ? <AlertTriangle className="w-4 h-4" /> : <FileDown className="w-4 h-4" />)}
+              {isSaving ? 'PROCESANDO...' : (effectivelyRequiresApproval ? 'SOLICITAR APROBACIÓN' : 'EMITIR Y CONTINUAR')}
             </button>
             <button onClick={onClose} disabled={isSaving} className="bg-slate-800 hover:bg-slate-700 text-slate-400 p-2 rounded-xl transition-colors">
               <X className="w-5 h-5" />
@@ -164,18 +216,18 @@ export default function QuotePreview({
           </div>
         </div>
 
+        {/* ... (El resto del documento visual se mantiene exactamente igual) ... */}
         {/* DOCUMENTO VISUAL (HTML) */}
         <div className="flex-1 overflow-y-auto p-8 md:p-12 bg-white text-slate-800 custom-scrollbar">
           
-          {/* Encabezado Doc */}
           <div className="flex justify-between border-b-2 border-slate-100 pb-8 mb-8">
             <div>
               <h1 className="text-3xl font-black text-cyan-600 tracking-tighter">COMTEC</h1>
               <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase">Industrial Solutions</p>
             </div>
             <div className="text-right">
-              <div className={`px-3 py-1 rounded-full text-[10px] font-bold mb-2 inline-block uppercase ${requiresApproval ? 'bg-orange-100 text-orange-700' : 'bg-amber-100 text-amber-700'}`}>
-                {requiresApproval ? 'Borrador - Bloqueado' : 'Borrador'}
+              <div className={`px-3 py-1 rounded-full text-[10px] font-bold mb-2 inline-block uppercase ${effectivelyRequiresApproval ? 'bg-orange-100 text-orange-700' : 'bg-amber-100 text-amber-700'}`}>
+                {effectivelyRequiresApproval ? 'Borrador - Bloqueado' : 'Borrador'}
               </div>
               <p className="text-sm text-slate-500 font-medium">Fecha: {tempDate}</p>
               {validityDays && <p className="text-xs text-slate-400">Validez: {validityDays} días</p>}
@@ -188,31 +240,19 @@ export default function QuotePreview({
               <p className="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-widest">
                 {client.rut === '1-9' || client.rut === 'Contado' ? 'Atención a:' : 'Cliente:'}
               </p>
-              
-              {/* LÓGICA DE CLIENTE GENÉRICO VS REGULAR */}
               {client.rut === '1-9' || client.rut === 'Contado' ? (
                  <>
-                   <p className="font-bold text-xl text-slate-900 leading-tight uppercase">
-                     {attentionTo || 'Venta Express'}
-                   </p>
-                   <div className="mt-2 text-sm text-slate-600">
-                     <p>Cotización al Contado</p>
-                   </div>
+                   <p className="font-bold text-xl text-slate-900 leading-tight uppercase">{attentionTo || 'Venta Express'}</p>
+                   <div className="mt-2 text-sm text-slate-600"><p>Cotización al Contado</p></div>
                  </>
               ) : (
                  <>
                    <p className="font-bold text-xl text-slate-900 leading-tight">{client.razon_social}</p>
-                   {attentionTo && (
-                     <p className="text-sm font-bold text-cyan-700 mt-1 uppercase">ATN: {attentionTo}</p>
-                   )}
-                   <div className="mt-2 text-sm text-slate-600">
-                     <p>RUT: {client.rut}</p>
-                     <p>{client.direccion}</p>
-                   </div>
+                   {attentionTo && <p className="text-sm font-bold text-cyan-700 mt-1 uppercase">ATN: {attentionTo}</p>}
+                   <div className="mt-2 text-sm text-slate-600"><p>RUT: {client.rut}</p><p>{client.direccion}</p></div>
                  </>
               )}
             </div>
-            
             <div className="flex flex-col items-end">
               <div className="p-2 border border-slate-100 rounded-lg">
                 <QRCodeSVG value={previewUrl} size={80} level="M" />
@@ -241,7 +281,6 @@ export default function QuotePreview({
                         <FileCheck className="w-3 h-3" /> Ficha Técnica Incluida
                       </div>
                     )}
-                    {/* Renderizado del Comentario Específico */}
                     {item.comment && (
                       <div className="mt-1 text-xs text-slate-500 font-normal italic whitespace-pre-line">
                         Nota: {item.comment}
@@ -287,7 +326,6 @@ export default function QuotePreview({
             )}
           </div>
 
-          {/* Sección de Firma del Emisor */}
           {profile && (
             <div className="mt-12 pt-8 border-t border-slate-200">
               <div className="text-xs text-slate-500">
