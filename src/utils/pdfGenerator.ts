@@ -176,7 +176,7 @@ export const generateQuotePDF = (quote: QuoteData, client: Client, qrCodeUrl?: s
             doc.line(startX + iconSize + iconPad - 1, linkY - 0.5, startX + iconSize + iconPad, linkY - 1.5);
 
             // 3. Dibujar el texto azul "Ver Ficha Técnica" SIN corchetes
-            doc.text('Ver Ficha Técnica', startX + iconSize + iconPad + 1, linkY);
+            doc.text('Ver Ficha Técnic', startX + iconSize + iconPad + 1, linkY);
 
             // UX: Creamos el área clicable de UX mejorada que cubre toda la celda de descripción
             doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, {
