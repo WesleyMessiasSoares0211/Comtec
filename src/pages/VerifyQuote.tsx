@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { 
   ShieldCheck, FileText, AlertTriangle, Loader2, ChevronRight,
-  Building2, Layers, Printer, ExternalLink, FileArchive
+  Building2, Layers, Printer, ExternalLink, FileArchive, User
 } from 'lucide-react';
 import { Quote } from '../types/quotes';
 import { generateQuotePDF } from '../utils/pdfGenerator';
@@ -97,6 +97,7 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
         width: 200, margin: 1, color: { dark: '#000000', light: '#ffffff' }
       });
 
+      // Aseguramos enviar los datos del vendedor si existen en tu contexto actual (o podrías hacer un fetch del profile aquí si es crítico en el portal)
       const success = generateQuotePDF({
         folio: quote.folio,
         items: quote.items,
@@ -107,7 +108,8 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
         notes: quote.notes,
         terms: quote.terms,
         validity_days: quote.validity_days,
-        version: quote.version
+        version: quote.version,
+        attention_to: (quote as any).attention_to // PASAMOS EL ATN
       }, clientData, qrDataUrl);
 
       if (success) toast.success("PDF Oficial descargado");
@@ -215,6 +217,8 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
   );
 
   const hasTechSpecs = quote.items?.some(i => i.datasheet_url || i.technical_spec_url);
+  const clientData = (quote as any).crm_clients;
+  const isGenericClient = clientData?.rut === '1-9' || clientData?.rut === 'Contado';
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 selection:bg-cyan-500/30 font-sans print:bg-white print:text-black">
@@ -286,12 +290,23 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
 
             <div className="flex items-center gap-4 bg-slate-950/80 p-5 rounded-2xl border border-slate-800/50">
               <div className="bg-cyan-500/10 p-3 rounded-xl border border-cyan-500/20">
-                <Building2 className="w-6 h-6 text-cyan-400" />
+                {isGenericClient ? <User className="w-6 h-6 text-cyan-400" /> : <Building2 className="w-6 h-6 text-cyan-400" />}
               </div>
               <div className="min-w-0">
-                <p className="text-slate-500 text-[10px] uppercase font-black tracking-widest mb-0.5">Cliente Titular</p>
-                <p className="text-white font-bold leading-tight truncate">{(quote as any).crm_clients?.razon_social}</p>
-                <p className="text-cyan-500/60 font-mono text-xs mt-1">{(quote as any).crm_clients?.rut}</p>
+                <p className="text-slate-500 text-[10px] uppercase font-black tracking-widest mb-0.5">
+                  {isGenericClient ? 'Atención A' : 'Cliente Titular'}
+                </p>
+                {isGenericClient ? (
+                  <>
+                    <p className="text-white font-bold leading-tight truncate uppercase">{(quote as any).attention_to || 'VENTA EXPRESS'}</p>
+                    <p className="text-cyan-500/60 font-mono text-xs mt-1">Cotización al Contado</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-white font-bold leading-tight truncate">{clientData?.razon_social}</p>
+                    <p className="text-cyan-500/60 font-mono text-xs mt-1">{clientData?.rut}</p>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -323,9 +338,9 @@ export default function VerifyQuote({ folio: propFolio }: Props) {
 
             <div className="mt-8 pt-6 border-t border-slate-800">
                <div className="flex justify-between items-center">
-                 <span className="text-slate-500 text-xs font-bold uppercase">Total Oferta Comercial (Neto):</span>
+                 <span className="text-slate-500 text-xs font-bold uppercase">Total Oferta Comercial (Bruto):</span>
                  <span className="text-white font-mono font-bold text-xl">
-                   ${Number(quote.total || quote.total_bruto || 0).toLocaleString('es-CL')}
+                   ${Number(quote.total_bruto || quote.total || 0).toLocaleString('es-CL')}
                  </span>
                </div>
             </div>
