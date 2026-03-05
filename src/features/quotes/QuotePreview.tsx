@@ -69,14 +69,15 @@ export default function QuotePreview({
         subtotal_neto: totals.subtotal,
         iva: totals.iva,
         total_bruto: totals.total,
-        notes,
+        // Agregamos una nota automática silenciosa si requiere aprobación
+        notes: requiresApproval ? `[REQUIERE APROBACIÓN POR MARGEN BAJO] ${notes || ''}` : notes,
         terms,
         validity_days: validityDays,
         version: nextVersion,
         folio: existingFolio,
         parent_quote_id: parentQuoteId,
         attention_to: attentionTo || null, 
-        estado_sugerido: requiresApproval ? 'Pendiente de Aprobacion' : 'Pendiente' // Flag para el backend
+        estado_sugerido: requiresApproval ? 'Borrador' : 'Pendiente' // Usamos un estado oficial
       };
 
       const savedQuote = await quoteService.create(payload);
